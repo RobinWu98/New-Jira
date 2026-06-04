@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: svida-jobtracker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: jobTracker
+    ports:
+      - "5433:5432"
+    volumes:
+      - svida_jobtracker_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jobTracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+    container_name: svida-jobtracker-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/jobTracker
+      TWO_FACTOR_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      SESSION_SECRET: docker-demo-session-secret-change-me
+      APP_URL: http://localhost:3000
+      APP_NAME: Svida Job Tracker
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: "587"
+      SMTP_SECURE: "false"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      EMAIL_FROM: Svida Job Tracker <noreply@example.com>
+      EMAIL_REPLY_TO: shangweiwu1013@gmail.com
+    ports:
+      - "3000:3000"
+    command: sh -c "npm run db:init && npm run start -- -H 0.0.0.0"
+
+volumes:
+  svida_jobtracker_data:

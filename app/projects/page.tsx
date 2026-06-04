@@ -62,13 +62,15 @@ function ProjectTable({
   status,
   projects,
   users,
-  currentUserId
+  currentUserId,
+  canModify
 }: {
   title: string;
   status: "active" | "done";
   projects: ProjectRow[];
   users: { id: string; label: string }[];
   currentUserId: string;
+  canModify: boolean;
 }) {
   return (
     <div className={`project-group project-group-${status}`}>
@@ -95,8 +97,16 @@ function ProjectTable({
             <span role="cell">{formatDate(project.ddl)}</span>
             <span role="cell">{project.owner_name || project.owner_email || "Unassigned"}</span>
             <span role="cell" className="record-actions">
-              <EditProjectModal users={users} currentUserId={currentUserId} project={toProjectFormData(project)} />
-              <DeleteProjectForm projectId={project.id} />
+              {canModify ? (
+                <>
+                  <EditProjectModal users={users} currentUserId={currentUserId} project={toProjectFormData(project)} />
+                  <DeleteProjectForm projectId={project.id} />
+                </>
+              ) : (
+                <a className="button secondary" href={`/projects/${project.id}`}>
+                  View
+                </a>
+              )}
             </span>
           </div>
         ))}
@@ -126,7 +136,7 @@ export default async function ProjectsPage() {
        LEFT JOIN users ON users.id = projects.owner_id
        LEFT JOIN tasks ON tasks.project_id = projects.id
        GROUP BY projects.id, users.name, users.email
-       ORDER BY projects.ddl ASC, projects.created_at DESC`
+       ORDER BY CASE projects.status WHEN 'active' THEN 0 ELSE 1 END, projects.ddl ASC, projects.created_at DESC`
     )
   ]);
 
@@ -136,6 +146,7 @@ export default async function ProjectsPage() {
   }));
   const activeProjects = projectsResult.rows.filter((project) => normalizeProjectStatus(project.status) === "active");
   const doneProjects = projectsResult.rows.filter((project) => normalizeProjectStatus(project.status) === "done");
+  const canModify = user.role === "admin";
 
   return (
     <AppFrame shellClassName="project-shell">
@@ -146,7 +157,7 @@ export default async function ProjectsPage() {
         <div className="section-toolbar">
           <h2>All Project List</h2>
           <div className="toolbar-actions">
-            <CreateProjectModal users={users} currentUserId={user.id} />
+            {canModify ? <CreateProjectModal users={users} currentUserId={user.id} /> : null}
             <a className="button secondary" href="/main-page">
               Back
             </a>
@@ -158,6 +169,7 @@ export default async function ProjectsPage() {
           projects={activeProjects}
           users={users}
           currentUserId={user.id}
+          canModify={canModify}
         />
         <ProjectTable
           title="Done Projects"
@@ -165,6 +177,7 @@ export default async function ProjectsPage() {
           projects={doneProjects}
           users={users}
           currentUserId={user.id}
+          canModify={canModify}
         />
       </section>
     </AppFrame>

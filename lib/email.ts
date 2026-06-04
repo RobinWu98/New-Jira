@@ -1,8 +1,8 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
-const PASSWORD_RESET_REPLY_TO = "shangweiwu1013@gmail.com";
-const ADMIN_INVITE_VERIFICATION_EMAIL = "shangweiwu1013@gmail.com";
-const DEFAULT_EMAIL_FROM = "Svida Job Tracker <onboarding@resend.dev>";
+const DEFAULT_PERSONAL_EMAIL = "shangweiwu1013@gmail.com";
+const PASSWORD_RESET_REPLY_TO = process.env.EMAIL_REPLY_TO ?? DEFAULT_PERSONAL_EMAIL;
+const DEFAULT_EMAIL_FROM = `Svida Job Tracker <${DEFAULT_PERSONAL_EMAIL}>`;
 const EMAIL_INK = "#3d332a";
 const EMAIL_MUTED = "#746557";
 const EMAIL_BUTTON = "#b87954";
@@ -12,16 +12,31 @@ type SendPasswordResetEmailResult =
   | { mode: "sent" }
   | { mode: "development"; resetUrl: string };
 
-type SendAdminInviteVerificationEmailResult =
-  | { mode: "sent" }
-  | { mode: "development"; code: string };
-
 type SendUserRegistrationInviteEmailResult =
   | { mode: "sent" }
   | { mode: "development"; inviteUrl: string };
 
 function getEmailFrom() {
   return process.env.EMAIL_FROM ?? DEFAULT_EMAIL_FROM;
+}
+
+function getSmtpTransport() {
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!user || !pass) {
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST ?? "smtp.gmail.com",
+    port: Number(process.env.SMTP_PORT ?? 587),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: {
+      user,
+      pass
+    }
+  });
 }
 
 function getAppName() {
@@ -37,22 +52,41 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
-export async function sendPasswordResetEmail(email: string, resetUrl: string): Promise<SendPasswordResetEmailResult> {
-  const apiKey = process.env.RESEND_API_KEY;
+async function sendEmail({
+  to,
+  subject,
+  text,
+  html
+}: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}) {
+  const transport = getSmtpTransport();
 
-  if (!apiKey) {
-    return { mode: "development", resetUrl };
+  if (!transport) {
+    return false;
   }
 
+  await transport.sendMail({
+    from: getEmailFrom(),
+    to,
+    replyTo: PASSWORD_RESET_REPLY_TO,
+    subject,
+    text,
+    html
+  });
+
+  return true;
+}
+
+export async function sendPasswordResetEmail(email: string, resetUrl: string): Promise<SendPasswordResetEmailResult> {
   const appName = getAppName();
   const safeAppName = escapeHtml(appName);
   const safeResetUrl = escapeHtml(resetUrl);
-  const resend = new Resend(apiKey);
-
-  const { error } = await resend.emails.send({
-    from: getEmailFrom(),
+  const sent = await sendEmail({
     to: email,
-    replyTo: PASSWORD_RESET_REPLY_TO,
     subject: `Reset your ${appName} password`,
     text: [
       `We received a request to reset your ${appName} password.`,
@@ -77,53 +111,8 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string): P
     `
   });
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return { mode: "sent" };
-}
-
-export async function sendAdminInviteVerificationEmail(
-  inviteeEmail: string,
-  code: string
-): Promise<SendAdminInviteVerificationEmailResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-
-  if (!apiKey) {
-    return { mode: "development", code };
-  }
-
-  const appName = getAppName();
-  const safeAppName = escapeHtml(appName);
-  const safeInviteeEmail = escapeHtml(inviteeEmail);
-  const safeCode = escapeHtml(code);
-  const resend = new Resend(apiKey);
-
-  const { error } = await resend.emails.send({
-    from: getEmailFrom(),
-    to: ADMIN_INVITE_VERIFICATION_EMAIL,
-    replyTo: PASSWORD_RESET_REPLY_TO,
-    subject: `Verify ${appName} user invitation`,
-    text: [
-      `Use this verification code to approve the ${appName} invitation for ${inviteeEmail}:`,
-      "",
-      code,
-      "",
-      "This code expires in 30 minutes."
-    ].join("\n"),
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5; color: ${EMAIL_INK};">
-        <h1 style="font-size: 22px;">Verify ${safeAppName} user invitation</h1>
-        <p>Use this code to approve the invitation for <strong>${safeInviteeEmail}</strong>.</p>
-        <p style="font-size: 28px; font-weight: 700; letter-spacing: 4px;">${safeCode}</p>
-        <p>This code expires in 30 minutes.</p>
-      </div>
-    `
-  });
-
-  if (error) {
-    throw new Error(error.message);
+  if (!sent) {
+    return { mode: "development", resetUrl };
   }
 
   return { mode: "sent" };
@@ -133,21 +122,11 @@ export async function sendUserRegistrationInviteEmail(
   email: string,
   inviteUrl: string
 ): Promise<SendUserRegistrationInviteEmailResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-
-  if (!apiKey) {
-    return { mode: "development", inviteUrl };
-  }
-
   const appName = getAppName();
   const safeAppName = escapeHtml(appName);
   const safeInviteUrl = escapeHtml(inviteUrl);
-  const resend = new Resend(apiKey);
-
-  const { error } = await resend.emails.send({
-    from: getEmailFrom(),
+  const sent = await sendEmail({
     to: email,
-    replyTo: PASSWORD_RESET_REPLY_TO,
     subject: `Complete your ${appName} account`,
     text: [
       `You have been invited to join ${appName}.`,
@@ -172,8 +151,8 @@ export async function sendUserRegistrationInviteEmail(
     `
   });
 
-  if (error) {
-    throw new Error(error.message);
+  if (!sent) {
+    return { mode: "development", inviteUrl };
   }
 
   return { mode: "sent" };

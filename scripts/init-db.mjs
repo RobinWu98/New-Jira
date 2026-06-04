@@ -71,7 +71,16 @@ const client = new Client({ connectionString });
 try {
   await client.connect();
   await client.query(schema);
+  const { rows } = await client.query(`
+    SELECT
+      (SELECT COUNT(*)::int FROM users) AS users,
+      (SELECT COUNT(*)::int FROM projects) AS projects,
+      (SELECT COUNT(*)::int FROM tasks) AS tasks
+  `);
+
   console.log("Database schema initialized.");
+  console.log(`Seeded ${rows[0].users} users, ${rows[0].projects} projects, and ${rows[0].tasks} tasks.`);
+  console.log("Demo admin login: admin@example.com / Password123!");
 } finally {
   await client.end();
 }

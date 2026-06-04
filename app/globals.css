@@ -341,6 +341,10 @@ select {
   width: min(1040px, 100%);
 }
 
+.dashboard-shell {
+  width: min(1080px, 100%);
+}
+
 .login-shell {
   margin-top: 28px;
 }
@@ -615,6 +619,181 @@ a.button {
   width: 100%;
   min-height: 72px;
   font-size: 22px;
+}
+
+.segmented-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.button.is-active {
+  background: var(--focus);
+  color: var(--ink);
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 3px solid var(--line);
+  background: var(--surface);
+}
+
+.summary-grid div {
+  min-width: 0;
+  padding: 14px;
+  border-right: 2px solid var(--line);
+  border-bottom: 2px solid var(--line);
+}
+
+.summary-grid div:nth-child(3n) {
+  border-right: 0;
+}
+
+.summary-grid div:nth-last-child(-n + 3) {
+  border-bottom: 0;
+}
+
+.summary-grid strong,
+.summary-grid span {
+  display: block;
+}
+
+.summary-grid strong {
+  font-size: 16px;
+}
+
+.summary-grid span {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.dashboard-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.chart-panel {
+  border: 3px solid var(--line);
+  background: var(--surface);
+  padding: 14px;
+}
+
+.chart-panel h3 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.chart-box {
+  min-width: 0;
+  width: 100%;
+  height: 250px;
+}
+
+.team-block-list {
+  display: grid;
+  gap: 16px;
+}
+
+.team-member-block {
+  border: 3px solid var(--line);
+  background: var(--surface);
+}
+
+.team-member-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  background: var(--surface-soft);
+  cursor: pointer;
+  list-style: none;
+}
+
+.team-member-summary::-webkit-details-marker {
+  display: none;
+}
+
+.team-member-summary::after {
+  content: ">";
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 700;
+}
+
+.team-member-block[open] .team-member-summary {
+  border-bottom: 3px solid var(--line);
+}
+
+.team-member-block[open] .team-member-summary::after {
+  transform: rotate(90deg);
+}
+
+.team-member-summary span {
+  min-width: 0;
+}
+
+.team-member-summary strong,
+.team-member-summary small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.team-member-summary small {
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.team-project-list {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.team-project-block {
+  border: 2px solid var(--line);
+  background: var(--paper);
+}
+
+.team-project-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 2px solid var(--line);
+  background: var(--active-bg);
+  padding: 10px 12px;
+}
+
+.team-project-name a {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.team-task-list {
+  display: grid;
+}
+
+.team-task-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(110px, 0.35fr) minmax(130px, 0.45fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--line);
+}
+
+.team-task-row:last-child {
+  border-bottom: 0;
+}
+
+.team-task-row > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .table-like {
@@ -902,6 +1081,16 @@ a.button {
   min-width: 900px;
 }
 
+.tasks-table-row.task-detail-row-readonly {
+  grid-template-columns: minmax(240px, 1.7fr) minmax(190px, 1.2fr) minmax(120px, 0.7fr) minmax(140px, 0.8fr);
+  min-width: 690px;
+}
+
+.tasks-table-row.dashboard-task-row {
+  grid-template-columns: minmax(230px, 1.4fr) minmax(190px, 1.1fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(130px, 0.8fr);
+  min-width: 780px;
+}
+
 .tasks-table-row:last-child {
   border-bottom: 0;
 }
@@ -1108,8 +1297,28 @@ a.button {
 
   .form-grid.two-columns,
   .form-grid.three-columns,
-  .project-grid {
+  .project-grid,
+  .summary-grid,
+  .dashboard-chart-grid,
+  .team-task-row {
     grid-template-columns: 1fr;
+  }
+
+  .team-member-summary,
+  .team-project-name {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .summary-grid div,
+  .summary-grid div:nth-child(3n),
+  .summary-grid div:nth-last-child(-n + 3) {
+    border-right: 0;
+    border-bottom: 2px solid var(--line);
+  }
+
+  .summary-grid div:last-child {
+    border-bottom: 0;
   }
 
   .section-toolbar,

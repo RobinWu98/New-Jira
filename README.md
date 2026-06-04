@@ -2,29 +2,53 @@
 
 Old fashioned Next.js full-stack starter with a basic account system.
 
-## Local setup
+For full developer setup, database seeding, Docker demo notes, and data insertion examples, see:
 
-1. Create a PostgreSQL database named `jobTracker`.
-2. Put the real connection string in `.env.local`.
-   To send password reset emails through Resend, also add:
-
-```bash
-RESEND_API_KEY="your-resend-api-key"
-APP_URL="http://localhost:3000"
-EMAIL_FROM="Svida Job Tracker <noreply@your-verified-domain.com>"
+```text
+docs/DEVELOPER_SETUP.md
 ```
 
-   `EMAIL_FROM` must use a domain verified in Resend. Password reset emails use `shangweiwu1013@gmail.com` as the reply-to address.
+## Local setup
+
+1. Start PostgreSQL locally.
+2. Put the real connection string in `.env.local`. A local development file is included with:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/jobTracker
+```
+
+   The `db:init` script creates the `jobTracker` database if it does not exist.
+   To send password reset and invite emails through Gmail during development, enable 2-Step Verification for the Gmail account, create a Google App Password, then set:
+
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=shangweiwu1013@gmail.com
+SMTP_PASS=your-google-app-password
+EMAIL_FROM="Svida Job Tracker <shangweiwu1013@gmail.com>"
+EMAIL_REPLY_TO=shangweiwu1013@gmail.com
+ADMIN_INVITE_VERIFICATION_EMAIL=shangweiwu1013@gmail.com
+```
+
+   If `SMTP_PASS` is empty, the app stays in development fallback mode and shows reset/invite links in the UI instead of sending real email.
 3. Install dependencies:
 
 ```bash
 npm install
 ```
 
-4. Initialize tables:
+4. Initialize tables and seed demo data:
 
 ```bash
 npm run db:init
+```
+
+   Demo admin login:
+
+```bash
+admin@example.com
+Password123!
 ```
 
 5. Start the app:
@@ -34,6 +58,40 @@ npm run dev
 ```
 
 The app runs at `http://localhost:3000`.
+
+## Docker pitch setup
+
+Use this when you want a quick product demo with PostgreSQL and seeded data.
+
+```bash
+docker compose up --build
+```
+
+The app runs at:
+
+```bash
+http://localhost:3000
+```
+
+The Docker database is exposed on host port `5433` and stores data in the `svida_jobtracker_data` Docker volume.
+
+Seeded demo login:
+
+```bash
+admin@example.com
+Password123!
+```
+
+The app container runs `npm run db:init` before starting, so the Docker database is automatically created and seeded with demo users, projects, and tasks.
+
+To reset the Docker demo database:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+For real Gmail SMTP in Docker, set `SMTP_USER` and `SMTP_PASS` in `docker-compose.yml` before starting the app.
 
 ## Current scope
 

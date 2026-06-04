@@ -8,7 +8,7 @@ const TWO_FACTOR_CHALLENGE_COOKIE = "jobtracker_2fa_challenge";
 const TWO_FACTOR_TRUST_COOKIE = "jobtracker_2fa_trust";
 const SESSION_DAYS = 14;
 const TWO_FACTOR_CHALLENGE_MINUTES = 10;
-const TWO_FACTOR_TRUST_DAYS = 28;
+const TWO_FACTOR_TRUST_DAYS = 30;
 
 export type UserRole = "admin" | "user";
 

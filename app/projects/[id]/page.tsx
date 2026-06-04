@@ -69,7 +69,7 @@ function toTaskFormData(projectId: string, task: TaskRow): TaskFormData {
 }
 
 export default async function ProjectDetailPage({ params }: ProjectDetailPageProps) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
 
   if (!isUuid(id)) {
@@ -105,7 +105,10 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
        FROM tasks
        JOIN users ON users.id = tasks.assigned_to_id
        WHERE tasks.project_id = $1
-       ORDER BY tasks.created_at DESC`,
+       ORDER BY
+         CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+         CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+         tasks.created_at DESC`,
       [id]
     ),
     query<UserRow>("SELECT id, name, email::text AS email FROM users ORDER BY name NULLS LAST, email")
@@ -121,6 +124,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
     id: user.id,
     label: user.name ? `${user.name} (${user.email})` : user.email
   }));
+  const canModify = user.role === "admin";
 
   return (
     <AppFrame shellClassName="project-shell" currentProjectId={project.id}>
@@ -131,7 +135,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         <div className="section-toolbar">
           <h2>Tasks View</h2>
           <div className="toolbar-actions">
-            <CreateTaskModal projectId={project.id} users={users} />
+            {canModify ? <CreateTaskModal projectId={project.id} users={users} /> : null}
             <a className="button secondary" href="/projects">
               Back
             </a>
@@ -160,15 +164,15 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
       <section className="panel">
         <h2>Tasks</h2>
         <div className="tasks-table" role="table" aria-label={`${project.name} tasks`}>
-          <div className="tasks-table-row tasks-table-head task-detail-row" role="row">
+          <div className={`tasks-table-row tasks-table-head task-detail-row${canModify ? "" : " task-detail-row-readonly"}`} role="row">
             <strong role="columnheader">Task</strong>
             <strong role="columnheader">Assigned To</strong>
             <strong role="columnheader">Priority</strong>
             <strong role="columnheader">Status</strong>
-            <strong role="columnheader">Actions</strong>
+            {canModify ? <strong role="columnheader">Actions</strong> : null}
           </div>
           {tasksResult.rows.map((task) => (
-            <div className="tasks-table-row task-detail-row" role="row" key={task.id}>
+            <div className={`tasks-table-row task-detail-row${canModify ? "" : " task-detail-row-readonly"}`} role="row" key={task.id}>
               <span role="cell">{task.title}</span>
               <span role="cell">{task.assigned_to_name || task.assigned_to_email}</span>
               <span role="cell">
@@ -177,10 +181,12 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
               <span role="cell">
                 <span className={`task-pill task-status-${task.status}`}>{formatLabel(task.status)}</span>
               </span>
-              <span role="cell" className="table-actions">
-                <EditTaskModal projectId={project.id} users={users} task={toTaskFormData(project.id, task)} />
-                <DeleteTaskForm projectId={project.id} taskId={task.id} />
-              </span>
+              {canModify ? (
+                <span role="cell" className="table-actions">
+                  <EditTaskModal projectId={project.id} users={users} task={toTaskFormData(project.id, task)} />
+                  <DeleteTaskForm projectId={project.id} taskId={task.id} />
+                </span>
+              ) : null}
             </div>
           ))}
         </div>

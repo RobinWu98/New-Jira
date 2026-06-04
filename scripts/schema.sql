@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS citext;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -10,7 +11,6 @@ CREATE TABLE IF NOT EXISTS users (
   two_factor_enabled BOOLEAN NOT NULL DEFAULT false,
   two_factor_secret TEXT,
   two_factor_pending_secret TEXT,
-  two_factor_pin_hash TEXT,
   two_factor_confirmed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -22,18 +22,32 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS category TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_secret TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_pending_secret TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_pin_hash TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_confirmed_at TIMESTAMPTZ;
+ALTER TABLE users DROP COLUMN IF EXISTS two_factor_pin_hash;
 
 UPDATE users
 SET category = 'Business'
 WHERE category IS NULL OR category NOT IN ('IT', 'Sales', 'Support', 'Business');
+
+UPDATE users
+SET role = 'user'
+WHERE role NOT IN ('admin', 'user');
 
 ALTER TABLE users ALTER COLUMN category SET DEFAULT 'Business';
 ALTER TABLE users ALTER COLUMN category SET NOT NULL;
 
 DO $$
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'users_role_check'
+  ) THEN
+    ALTER TABLE users
+      ADD CONSTRAINT users_role_check
+      CHECK (role IN ('admin', 'user'));
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM pg_constraint
@@ -97,6 +111,43 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+UPDATE projects SET status = 'active' WHERE status NOT IN ('active', 'done');
+UPDATE tasks SET priority = 'medium' WHERE priority NOT IN ('low', 'medium', 'high');
+UPDATE tasks SET status = 'todo' WHERE status NOT IN ('todo', 'in_progress', 'done');
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'projects_status_check'
+  ) THEN
+    ALTER TABLE projects
+      ADD CONSTRAINT projects_status_check
+      CHECK (status IN ('active', 'done'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'tasks_priority_check'
+  ) THEN
+    ALTER TABLE tasks
+      ADD CONSTRAINT tasks_priority_check
+      CHECK (priority IN ('low', 'medium', 'high'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'tasks_status_check'
+  ) THEN
+    ALTER TABLE tasks
+      ADD CONSTRAINT tasks_status_check
+      CHECK (status IN ('todo', 'in_progress', 'done'));
+  END IF;
+END $$;
+
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to_id UUID REFERENCES users(id) ON DELETE RESTRICT;
 
 WITH fallback_user AS (
@@ -148,18 +199,20 @@ CREATE INDEX IF NOT EXISTS two_factor_trusted_sessions_user_id_idx ON two_factor
 
 INSERT INTO users (name, email, password_hash, role, category)
 VALUES
-  ('Ava Chen', 'ava.chen@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'IT'),
-  ('Liam Patel', 'liam.patel@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'Sales'),
-  ('Mia Rodriguez', 'mia.rodriguez@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'Support'),
-  ('Noah Williams', 'noah.williams@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'Business'),
-  ('Sophia Nguyen', 'sophia.nguyen@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'IT'),
-  ('Ethan Brooks', 'ethan.brooks@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'Sales'),
-  ('Olivia Martin', 'olivia.martin@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'Support'),
-  ('Lucas Brown', 'lucas.brown@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'Business'),
-  ('Emma Wilson', 'emma.wilson@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'IT'),
-  ('James Miller', 'james.miller@example.com', '$2a$12$PtUf3bMjnjyEbj0MqalicuaMfivjvcy.DMIca30r0FJv3BEMx2b6a', 'user', 'Sales')
+  ('Jordan Lee', 'admin@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'admin', 'Business'),
+  ('Ava Chen', 'ava.chen@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'IT'),
+  ('Liam Patel', 'liam.patel@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Sales'),
+  ('Mia Rodriguez', 'mia.rodriguez@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Support'),
+  ('Noah Williams', 'noah.williams@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Business'),
+  ('Sophia Nguyen', 'sophia.nguyen@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'IT'),
+  ('Ethan Brooks', 'ethan.brooks@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Sales'),
+  ('Olivia Martin', 'olivia.martin@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Support'),
+  ('Lucas Brown', 'lucas.brown@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Business'),
+  ('Emma Wilson', 'emma.wilson@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'IT'),
+  ('James Miller', 'james.miller@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Sales')
 ON CONFLICT (email) DO UPDATE
 SET name = EXCLUDED.name,
+    role = EXCLUDED.role,
     category = EXCLUDED.category,
     updated_at = now();
 
@@ -167,10 +220,11 @@ INSERT INTO projects (name, description, start_date, ddl, owner_id, status)
 SELECT seed.name, seed.description, seed.start_date::date, seed.ddl::date, users.id, seed.status
 FROM (
   VALUES
-    ('Website Refresh', 'Update the public site content and launch a cleaner homepage.', '2026-06-03', '2026-06-28', 'ava.chen@example.com', 'active'),
-    ('CRM Cleanup', 'Review old contacts and tidy duplicate records.', '2026-06-05', '2026-06-20', 'liam.patel@example.com', 'active'),
-    ('Hiring Pipeline', 'Track interview steps for new team roles.', '2026-06-10', '2026-07-10', 'mia.rodriguez@example.com', 'active'),
-    ('Customer Portal Launch', 'Prepare customer self-service access for common account tasks.', '2026-06-12', '2026-07-18', 'noah.williams@example.com', 'active'),
+    ('Website Refresh', 'Refresh the public marketing site, including content, analytics, and launch readiness.', '2026-06-03', '2026-06-28', 'ava.chen@example.com', 'active'),
+    ('CRM Data Cleanup', 'De-duplicate accounts, normalize ownership, and prepare cleaner sales reporting.', '2026-06-05', '2026-06-24', 'liam.patel@example.com', 'active'),
+    ('Hiring Pipeline', 'Coordinate interview stages, feedback collection, and offer preparation for open roles.', '2026-06-10', '2026-07-10', 'mia.rodriguez@example.com', 'active'),
+    ('Customer Portal Launch', 'Prepare the self-service customer portal for beta launch and support handoff.', '2026-06-12', '2026-07-18', 'noah.williams@example.com', 'active'),
+    ('Mobile Incident Triage', 'Track investigation and remediation work for recent mobile app stability issues.', '2026-06-01', '2026-06-21', 'sophia.nguyen@example.com', 'active'),
     ('Q2 Sales Audit', 'Close the quarter review and reconcile opportunity data.', '2026-05-01', '2026-05-24', 'ethan.brooks@example.com', 'done'),
     ('Support Knowledge Base', 'Refresh support articles and publish the first internal release.', '2026-04-18', '2026-05-16', 'olivia.martin@example.com', 'done'),
     ('IT Asset Review', 'Confirm device assignments and retire old hardware records.', '2026-04-05', '2026-05-08', 'sophia.nguyen@example.com', 'done'),
@@ -182,58 +236,52 @@ WHERE NOT EXISTS (SELECT 1 FROM projects WHERE projects.name = seed.name);
 UPDATE projects SET status = 'active' WHERE status NOT IN ('active', 'done');
 
 INSERT INTO tasks (project_id, title, assigned_to_id, priority, status)
-SELECT projects.id, seed.title, projects.owner_id, seed.priority, seed.status
+SELECT projects.id, seed.title, users.id, seed.priority, seed.status
 FROM (
   VALUES
-    ('Website Refresh', 'Collect homepage copy', 'high', 65, 'in_progress'),
-    ('Website Refresh', 'Prepare launch checklist', 'medium', 20, 'todo'),
-    ('Website Refresh', 'Review visual QA notes', 'medium', 35, 'todo'),
-    ('Website Refresh', 'Confirm analytics tags', 'low', 15, 'todo'),
-    ('Website Refresh', 'Publish staging preview', 'high', 50, 'in_progress'),
-    ('Website Refresh', 'Send stakeholder update', 'medium', 10, 'todo'),
-    ('CRM Cleanup', 'Merge duplicate companies', 'medium', 40, 'in_progress'),
-    ('CRM Cleanup', 'Archive stale contacts', 'low', 10, 'todo'),
-    ('CRM Cleanup', 'Normalize account owners', 'high', 45, 'in_progress'),
-    ('CRM Cleanup', 'Export backup report', 'medium', 60, 'in_progress'),
-    ('CRM Cleanup', 'Validate cleaned segments', 'medium', 25, 'todo'),
-    ('Hiring Pipeline', 'Create interview scorecard', 'high', 75, 'in_progress'),
-    ('Hiring Pipeline', 'Schedule first round interviews', 'medium', 30, 'todo'),
-    ('Hiring Pipeline', 'Draft candidate brief', 'medium', 55, 'in_progress'),
-    ('Hiring Pipeline', 'Review role requirements', 'high', 80, 'in_progress'),
-    ('Hiring Pipeline', 'Prepare offer template', 'low', 20, 'todo'),
-    ('Hiring Pipeline', 'Collect panel feedback', 'medium', 15, 'todo'),
-    ('Hiring Pipeline', 'Update recruiting dashboard', 'low', 35, 'todo'),
-    ('Customer Portal Launch', 'Define launch scope', 'high', 70, 'in_progress'),
-    ('Customer Portal Launch', 'Map account settings flow', 'medium', 45, 'in_progress'),
-    ('Customer Portal Launch', 'Prepare access roles', 'medium', 30, 'todo'),
-    ('Customer Portal Launch', 'Write release notes', 'low', 10, 'todo'),
-    ('Customer Portal Launch', 'Run smoke tests', 'high', 25, 'todo'),
-    ('Customer Portal Launch', 'Confirm support handoff', 'medium', 20, 'todo'),
-    ('Q2 Sales Audit', 'Freeze opportunity exports', 'high', 100, 'done'),
-    ('Q2 Sales Audit', 'Compare quarterly targets', 'medium', 100, 'done'),
-    ('Q2 Sales Audit', 'Fix owner mismatches', 'medium', 100, 'done'),
-    ('Q2 Sales Audit', 'Review audit exceptions', 'high', 100, 'done'),
-    ('Q2 Sales Audit', 'Send final report', 'low', 100, 'done'),
-    ('Support Knowledge Base', 'Select top support topics', 'medium', 100, 'done'),
-    ('Support Knowledge Base', 'Rewrite login articles', 'high', 100, 'done'),
-    ('Support Knowledge Base', 'Add screenshots', 'medium', 100, 'done'),
-    ('Support Knowledge Base', 'Review escalation wording', 'medium', 100, 'done'),
-    ('Support Knowledge Base', 'Publish internal draft', 'high', 100, 'done'),
-    ('Support Knowledge Base', 'Collect team signoff', 'low', 100, 'done'),
-    ('IT Asset Review', 'Export device inventory', 'medium', 100, 'done'),
-    ('IT Asset Review', 'Match laptops to users', 'high', 100, 'done'),
-    ('IT Asset Review', 'Flag missing serial numbers', 'medium', 100, 'done'),
-    ('IT Asset Review', 'Retire inactive records', 'medium', 100, 'done'),
-    ('IT Asset Review', 'Confirm loaner pool', 'low', 100, 'done'),
-    ('IT Asset Review', 'Update asset owners', 'high', 100, 'done'),
-    ('IT Asset Review', 'Share completion summary', 'low', 100, 'done'),
-    ('Business Ops Playbook', 'Outline monthly workflow', 'medium', 100, 'done'),
-    ('Business Ops Playbook', 'Document approval steps', 'high', 100, 'done'),
-    ('Business Ops Playbook', 'Add onboarding checklist', 'medium', 100, 'done'),
-    ('Business Ops Playbook', 'Review with operations lead', 'medium', 100, 'done'),
-    ('Business Ops Playbook', 'Publish final version', 'low', 100, 'done')
-) AS seed(project_name, title, priority, progress, status)
+    ('Website Refresh', 'Collect final homepage copy', 'mia.rodriguez@example.com', 'high', 'in_progress'),
+    ('Website Refresh', 'Implement responsive navigation polish', 'ava.chen@example.com', 'high', 'in_progress'),
+    ('Website Refresh', 'Confirm analytics tags in staging', 'emma.wilson@example.com', 'medium', 'todo'),
+    ('Website Refresh', 'Prepare launch checklist', 'noah.williams@example.com', 'medium', 'todo'),
+    ('Website Refresh', 'Send stakeholder preview notes', 'admin@example.com', 'low', 'todo'),
+    ('CRM Data Cleanup', 'Merge duplicate company records', 'liam.patel@example.com', 'high', 'in_progress'),
+    ('CRM Data Cleanup', 'Archive stale contacts older than 18 months', 'ethan.brooks@example.com', 'medium', 'todo'),
+    ('CRM Data Cleanup', 'Normalize account owner fields', 'james.miller@example.com', 'high', 'in_progress'),
+    ('CRM Data Cleanup', 'Export backup report for finance', 'noah.williams@example.com', 'medium', 'done'),
+    ('CRM Data Cleanup', 'Validate cleaned customer segments', 'liam.patel@example.com', 'medium', 'todo'),
+    ('Hiring Pipeline', 'Create interview scorecard template', 'mia.rodriguez@example.com', 'high', 'done'),
+    ('Hiring Pipeline', 'Schedule first-round interviews', 'olivia.martin@example.com', 'medium', 'in_progress'),
+    ('Hiring Pipeline', 'Draft candidate briefing pack', 'lucas.brown@example.com', 'medium', 'todo'),
+    ('Hiring Pipeline', 'Review role requirements with hiring manager', 'admin@example.com', 'high', 'in_progress'),
+    ('Hiring Pipeline', 'Prepare offer approval template', 'noah.williams@example.com', 'low', 'todo'),
+    ('Customer Portal Launch', 'Define beta launch scope', 'noah.williams@example.com', 'high', 'done'),
+    ('Customer Portal Launch', 'Map account settings flow', 'ava.chen@example.com', 'medium', 'in_progress'),
+    ('Customer Portal Launch', 'Prepare customer access roles', 'sophia.nguyen@example.com', 'medium', 'todo'),
+    ('Customer Portal Launch', 'Write release notes', 'olivia.martin@example.com', 'low', 'todo'),
+    ('Customer Portal Launch', 'Run beta smoke tests', 'emma.wilson@example.com', 'high', 'todo'),
+    ('Mobile Incident Triage', 'Reproduce crash from latest production logs', 'sophia.nguyen@example.com', 'high', 'in_progress'),
+    ('Mobile Incident Triage', 'Group affected sessions by device model', 'emma.wilson@example.com', 'medium', 'done'),
+    ('Mobile Incident Triage', 'Draft customer support macro', 'olivia.martin@example.com', 'medium', 'todo'),
+    ('Mobile Incident Triage', 'Prepare hotfix release checklist', 'ava.chen@example.com', 'high', 'todo'),
+    ('Q2 Sales Audit', 'Freeze opportunity exports', 'ethan.brooks@example.com', 'high', 'done'),
+    ('Q2 Sales Audit', 'Compare quarterly targets', 'liam.patel@example.com', 'medium', 'done'),
+    ('Q2 Sales Audit', 'Fix owner mismatches', 'james.miller@example.com', 'medium', 'done'),
+    ('Q2 Sales Audit', 'Send final report', 'admin@example.com', 'low', 'done'),
+    ('Support Knowledge Base', 'Select top support topics', 'olivia.martin@example.com', 'medium', 'done'),
+    ('Support Knowledge Base', 'Rewrite login articles', 'mia.rodriguez@example.com', 'high', 'done'),
+    ('Support Knowledge Base', 'Add article screenshots', 'emma.wilson@example.com', 'medium', 'done'),
+    ('Support Knowledge Base', 'Publish internal draft', 'olivia.martin@example.com', 'high', 'done'),
+    ('IT Asset Review', 'Export device inventory', 'sophia.nguyen@example.com', 'medium', 'done'),
+    ('IT Asset Review', 'Match laptops to assigned users', 'ava.chen@example.com', 'high', 'done'),
+    ('IT Asset Review', 'Retire inactive hardware records', 'emma.wilson@example.com', 'medium', 'done'),
+    ('IT Asset Review', 'Share completion summary', 'sophia.nguyen@example.com', 'low', 'done'),
+    ('Business Ops Playbook', 'Outline monthly operations workflow', 'lucas.brown@example.com', 'medium', 'done'),
+    ('Business Ops Playbook', 'Document approval steps', 'noah.williams@example.com', 'high', 'done'),
+    ('Business Ops Playbook', 'Add onboarding checklist', 'admin@example.com', 'medium', 'done'),
+    ('Business Ops Playbook', 'Publish final version', 'lucas.brown@example.com', 'low', 'done')
+) AS seed(project_name, title, assignee_email, priority, status)
 JOIN projects ON projects.name = seed.project_name
+JOIN users ON users.email = seed.assignee_email
 WHERE NOT EXISTS (
   SELECT 1 FROM tasks WHERE tasks.project_id = projects.id AND tasks.title = seed.title
 );

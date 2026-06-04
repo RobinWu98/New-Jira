@@ -1,7 +1,6 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import crypto from "crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -18,11 +17,7 @@ import {
 } from "./auth";
 import { hashToken, randomToken } from "./crypto";
 import { query } from "./db";
-import {
-  sendAdminInviteVerificationEmail,
-  sendPasswordResetEmail,
-  sendUserRegistrationInviteEmail
-} from "./email";
+import { sendPasswordResetEmail, sendUserRegistrationInviteEmail } from "./email";
 import {
   consumeBackupCode,
   createSetupQrCode,
@@ -39,9 +34,7 @@ export type AuthActionState = {
   error?: string;
   message?: string;
   resetUrl?: string;
-  inviteId?: string;
   inviteUrl?: string;
-  verificationCode?: string;
   qrCodeDataUrl?: string;
   manualKey?: string;
   backupCodes?: string[];
@@ -59,22 +52,6 @@ function validateEmail(email: string) {
 
 function validatePassword(password: string) {
   return password.length >= 8;
-}
-
-function normalizePin(pin: string) {
-  return pin.replace(/\s/g, "");
-}
-
-function validatePin(pin: string) {
-  return /^\d{4,8}$/.test(pin);
-}
-
-function normalizeRole(role: string) {
-  return role === "admin" ? "admin" : "user";
-}
-
-function generateVerificationCode() {
-  return String(crypto.randomInt(100000, 1000000));
 }
 
 function normalizeProjectStatus(status: string) {
@@ -140,7 +117,7 @@ export async function loginAction(_: AuthActionState, formData: FormData): Promi
     return { error: "Email or password is incorrect." };
   }
 
-  if (user.two_factor_enabled) {
+  if (user.two_factor_enabled && !(await hasValidTwoFactorTrust(user.id))) {
     await createTwoFactorChallenge(user.id);
     redirect("/two-factor");
   }
@@ -154,15 +131,14 @@ export async function verifyLoginTwoFactorAction(
   formData: FormData
 ): Promise<AuthActionState> {
   const code = asString(formData, "code");
-  const pin = normalizePin(asString(formData, "pin"));
   const challengeUser = await getTwoFactorChallengeUser();
 
   if (!challengeUser) {
     return { error: "Two-factor sign-in has expired. Please log in again." };
   }
 
-  const result = await query<{ two_factor_secret: string | null; two_factor_pin_hash: string | null }>(
-    "SELECT two_factor_secret, two_factor_pin_hash FROM users WHERE id = $1 AND two_factor_enabled = true LIMIT 1",
+  const result = await query<{ two_factor_secret: string | null }>(
+    "SELECT two_factor_secret FROM users WHERE id = $1 AND two_factor_enabled = true LIMIT 1",
     [challengeUser.id]
   );
   const user = result.rows[0];
@@ -172,24 +148,6 @@ export async function verifyLoginTwoFactorAction(
     return { error: "Two-factor authentication is not available for this account." };
   }
 
-  if (user.two_factor_pin_hash && (await hasValidTwoFactorTrust(challengeUser.id))) {
-    if (!pin) {
-      return { error: "Enter your PIN to continue." };
-    }
-
-    if (!validatePin(pin)) {
-      return { error: "PIN must be 4 to 8 digits." };
-    }
-
-    if (!(await bcrypt.compare(pin, user.two_factor_pin_hash))) {
-      return { error: "PIN is incorrect." };
-    }
-
-    await clearTwoFactorChallenge();
-    await createSession(challengeUser.id);
-    redirect("/main-page");
-  }
-
   const isBackupCode = looksLikeBackupCode(code);
   const isValid = isBackupCode
     ? await consumeBackupCode(challengeUser.id, code)
@@ -197,17 +155,6 @@ export async function verifyLoginTwoFactorAction(
 
   if (!isValid) {
     return { error: "Authenticator code is incorrect." };
-  }
-
-  if (!user.two_factor_pin_hash) {
-    if (!validatePin(pin)) {
-      return { error: "Enter a 4 to 8 digit PIN to finish first-time two-factor sign-in." };
-    }
-
-    await query("UPDATE users SET two_factor_pin_hash = $1, updated_at = now() WHERE id = $2", [
-      await bcrypt.hash(pin, 12),
-      challengeUser.id
-    ]);
   }
 
   await clearTwoFactorChallenge();
@@ -222,7 +169,7 @@ export async function logoutAction() {
 }
 
 export async function createProjectAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const user = await requireUser();
+  const user = await requireAdmin();
   const name = asString(formData, "name");
   const description = asString(formData, "description");
   const startDate = asString(formData, "startDate");
@@ -259,7 +206,7 @@ export async function createProjectAction(_: AuthActionState, formData: FormData
 }
 
 export async function updateProjectAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const user = await requireUser();
+  const user = await requireAdmin();
   const projectId = asString(formData, "projectId");
   const name = asString(formData, "name");
   const description = asString(formData, "description");
@@ -314,7 +261,7 @@ export async function updateProjectAction(_: AuthActionState, formData: FormData
 }
 
 export async function deleteProjectAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  await requireUser();
+  await requireAdmin();
   const projectId = asString(formData, "projectId");
 
   if (!projectId) {
@@ -327,7 +274,7 @@ export async function deleteProjectAction(_: AuthActionState, formData: FormData
 }
 
 export async function createTaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  await requireUser();
+  await requireAdmin();
   const projectId = asString(formData, "projectId");
   const title = asString(formData, "title");
   const assignedToId = asString(formData, "assignedToId");
@@ -370,7 +317,7 @@ export async function createTaskAction(_: AuthActionState, formData: FormData): 
 }
 
 export async function updateTaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  await requireUser();
+  await requireAdmin();
   const taskId = asString(formData, "taskId");
   const projectId = asString(formData, "projectId");
   const title = asString(formData, "title");
@@ -418,7 +365,7 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
 }
 
 export async function deleteTaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  await requireUser();
+  await requireAdmin();
   const taskId = asString(formData, "taskId");
   const projectId = asString(formData, "projectId");
 
@@ -447,89 +394,54 @@ export async function createUserAction(_: AuthActionState, formData: FormData): 
     return { error: "Please enter a valid email address." };
   }
 
+  const token = randomToken();
+  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const inviteUrl = `${appUrl}/complete-registration?token=${token}`;
+  let createdUserId: string | null = null;
+
   try {
-    const code = generateVerificationCode();
     const userResult = await query<{ id: string }>(
       "INSERT INTO users (name, email, password_hash, role, category) VALUES ($1, $2, $3, 'user', $4) RETURNING id",
       [name, email, await bcrypt.hash(randomToken(), 12), category]
     );
-    const inviteResult = await query<{ id: string }>(
-      `INSERT INTO user_registration_invites (user_id, admin_code_hash, expires_at)
-       VALUES ($1, $2, now() + interval '30 minutes')
+    createdUserId = userResult.rows[0].id;
+
+    await query(
+      `INSERT INTO user_registration_invites (
+         user_id,
+         admin_code_hash,
+         invite_token_hash,
+         admin_verified_at,
+         invite_sent_at,
+         expires_at
+       )
+       VALUES ($1, $2, $3, now(), now(), now() + interval '7 days')
        RETURNING id`,
-      [userResult.rows[0].id, hashToken(code)]
+      [createdUserId, hashToken(token), hashToken(token)]
     );
-    const emailResult = await sendAdminInviteVerificationEmail(email, code);
+
+    const emailResult = await sendUserRegistrationInviteEmail(email, inviteUrl);
+
+    if (emailResult.mode === "development") {
+      await query("DELETE FROM users WHERE id = $1", [createdUserId]);
+      return { error: "SMTP is not configured, so the registration email was not sent." };
+    }
 
     revalidatePath("/admin/users");
-
     return {
-      message:
-        emailResult.mode === "development"
-          ? "Development mode: verification email is not configured, so use this code."
-          : "Verification code has been sent to shangweiwu1013@gmail.com.",
-      inviteId: inviteResult.rows[0].id,
-      verificationCode: emailResult.mode === "development" ? emailResult.code : undefined
+      message: "Registration email has been sent to the user."
     };
-  } catch {
-    return { error: "This email is already registered." };
+  } catch (error) {
+    if (createdUserId) {
+      await query("DELETE FROM users WHERE id = $1", [createdUserId]);
+    }
+
+    if (typeof error === "object" && error && "code" in error && error.code === "23505") {
+      return { error: "This email is already registered." };
+    }
+
+    return { error: error instanceof Error ? error.message : "Registration email could not be sent." };
   }
-}
-
-export async function verifyUserInviteAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  await requireAdmin();
-
-  const inviteId = asString(formData, "inviteId");
-  const code = asString(formData, "code");
-
-  if (!inviteId) {
-    return { error: "Create the user before entering a verification code." };
-  }
-
-  if (!/^\d{6}$/.test(code)) {
-    return { error: "Enter the 6-digit verification code." };
-  }
-
-  const inviteResult = await query<{ id: string; user_id: string; email: string }>(
-    `SELECT user_registration_invites.id, users.id AS user_id, users.email::text AS email
-     FROM user_registration_invites
-     JOIN users ON users.id = user_registration_invites.user_id
-     WHERE user_registration_invites.id = $1
-       AND user_registration_invites.admin_code_hash = $2
-       AND user_registration_invites.completed_at IS NULL
-       AND user_registration_invites.expires_at > now()
-     LIMIT 1`,
-    [inviteId, hashToken(code)]
-  );
-  const invite = inviteResult.rows[0];
-
-  if (!invite) {
-    return { error: "Verification code is invalid or expired.", inviteId };
-  }
-
-  const token = randomToken();
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const inviteUrl = `${appUrl}/complete-registration?token=${token}`;
-
-  await query(
-    `UPDATE user_registration_invites
-     SET invite_token_hash = $1,
-         admin_verified_at = now(),
-         invite_sent_at = now()
-     WHERE id = $2`,
-    [hashToken(token), invite.id]
-  );
-
-  const emailResult = await sendUserRegistrationInviteEmail(invite.email, inviteUrl);
-  revalidatePath("/admin/users");
-
-  return {
-    message:
-      emailResult.mode === "development"
-        ? "Development mode: user email is not configured, so use this registration link."
-        : "Registration email has been sent to the user.",
-    inviteUrl: emailResult.mode === "development" ? emailResult.inviteUrl : undefined
-  };
 }
 
 export async function completeInvitedRegistrationAction(
@@ -722,6 +634,7 @@ export async function confirmTwoFactorSetupAction(
      WHERE id = $2`,
     [encryptedSecret, user.id]
   );
+  await createTwoFactorTrust(user.id);
 
   return {
     message: "Two-factor authentication is now enabled. Save these recovery codes.",
@@ -762,7 +675,6 @@ export async function disableTwoFactorAction(
      SET two_factor_enabled = false,
          two_factor_secret = NULL,
          two_factor_pending_secret = NULL,
-         two_factor_pin_hash = NULL,
          two_factor_confirmed_at = NULL,
          updated_at = now()
      WHERE id = $1`,
