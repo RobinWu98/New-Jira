@@ -43,7 +43,7 @@ type TaskRow = {
 };
 
 type TaskPriorityFilter = "all" | "high" | "medium" | "low";
-type TaskStatusFilter = "all" | "active" | "todo" | "in_progress" | "done";
+type TaskStatusFilter = "active" | "done" | "all";
 type TaskSort = "default" | "priority" | "status" | "assignee" | "title" | "newest";
 
 const TASK_PRIORITY_LABELS: Record<TaskPriorityFilter, string> = {
@@ -54,11 +54,9 @@ const TASK_PRIORITY_LABELS: Record<TaskPriorityFilter, string> = {
 };
 
 const TASK_STATUS_LABELS: Record<TaskStatusFilter, string> = {
-  all: "All statuses",
-  active: "Active only",
-  todo: "Todo",
-  in_progress: "In Progress",
-  done: "Done"
+  active: "Active",
+  done: "Completed",
+  all: "View All"
 };
 
 const TASK_SORT_LABELS: Record<TaskSort, string> = {
@@ -92,7 +90,7 @@ function normalizeTaskPriorityFilter(value: string | undefined): TaskPriorityFil
 }
 
 function normalizeTaskStatusFilter(value: string | undefined): TaskStatusFilter {
-  return value === "active" || value === "todo" || value === "in_progress" || value === "done" ? value : "all";
+  return value === "done" || value === "completed" ? "done" : value === "all" ? "all" : "active";
 }
 
 function normalizeTaskSort(value: string | undefined): TaskSort {
@@ -111,6 +109,36 @@ function getPriorityRank(priority: string) {
 
 function getStatusRank(status: string) {
   return status === "done" ? 2 : status === "in_progress" ? 1 : 0;
+}
+
+function getTaskHref(params: {
+  projectId: string;
+  status: TaskStatusFilter;
+  assigneeId: string;
+  priority: TaskPriorityFilter;
+  queryText: string;
+  sort: TaskSort;
+}) {
+  const next = new URLSearchParams();
+  next.set("taskStatus", params.status);
+
+  if (params.assigneeId) {
+    next.set("assignee", params.assigneeId);
+  }
+
+  if (params.priority !== "all") {
+    next.set("priority", params.priority);
+  }
+
+  if (params.queryText) {
+    next.set("q", params.queryText);
+  }
+
+  if (params.sort !== "default") {
+    next.set("sort", params.sort);
+  }
+
+  return `/projects/${params.projectId}?${next.toString()}`;
 }
 
 function toTaskFormData(projectId: string, task: TaskRow): TaskFormData {
@@ -188,20 +216,9 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     label: user.name ? `${user.name} (${user.email})` : user.email
   }));
   const canModify = user.role === "admin";
-  const filteredTasks = tasksResult.rows
+  const baseFilteredTasks = tasksResult.rows
     .filter((task) => (selectedAssigneeId ? task.assigned_to_id === selectedAssigneeId : true))
     .filter((task) => (selectedPriority === "all" ? true : task.priority === selectedPriority))
-    .filter((task) => {
-      if (selectedTaskStatus === "all") {
-        return true;
-      }
-
-      if (selectedTaskStatus === "active") {
-        return task.status !== "done";
-      }
-
-      return task.status === selectedTaskStatus;
-    })
     .filter((task) => {
       if (!queryText) {
         return true;
@@ -211,8 +228,13 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       return [task.title, task.assigned_to_name ?? "", task.assigned_to_email].some((value) =>
         value.toLowerCase().includes(needle)
       );
-    })
-    .sort((left, right) => {
+    });
+  const taskGroups = {
+    active: baseFilteredTasks.filter((task) => task.status !== "done"),
+    done: baseFilteredTasks.filter((task) => task.status === "done"),
+    all: baseFilteredTasks
+  } satisfies Record<TaskStatusFilter, TaskRow[]>;
+  const filteredTasks = [...taskGroups[selectedTaskStatus]].sort((left, right) => {
       if (selectedTaskSort === "priority") {
         return getPriorityRank(left.priority) - getPriorityRank(right.priority);
       }
@@ -278,13 +300,44 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         </div>
       </section>
       <section className="panel">
-        <div className="section-toolbar">
-          <h2>Tasks</h2>
-          <span className="result-count">
-            {filteredTasks.length} of {tasksResult.rows.length}
-          </span>
+        <div className="project-group-toolbar">
+          <h2>
+            <span className={`project-keyword task-view-keyword task-view-keyword-${selectedTaskStatus}`}>
+              {TASK_STATUS_LABELS[selectedTaskStatus]} Tasks
+            </span>
+          </h2>
+          <div className="toolbar-actions">
+            <span className="result-count">
+              {filteredTasks.length} of {tasksResult.rows.length}
+            </span>
+            <nav className="table-view-switch" aria-label="Task table view">
+              <button className="button secondary table-view-trigger" type="button" aria-haspopup="true">
+                Table View: {TASK_STATUS_LABELS[selectedTaskStatus]} ({taskGroups[selectedTaskStatus].length})
+              </button>
+              <div className="table-view-menu" role="menu">
+                {(["active", "done", "all"] as TaskStatusFilter[]).map((status) => (
+                  <a
+                    className={selectedTaskStatus === status ? "is-active" : ""}
+                    href={getTaskHref({
+                      projectId: project.id,
+                      status,
+                      assigneeId: selectedAssigneeId,
+                      priority: selectedPriority,
+                      queryText,
+                      sort: selectedTaskSort
+                    })}
+                    key={status}
+                    role="menuitem"
+                  >
+                    {TASK_STATUS_LABELS[status]} ({taskGroups[status].length})
+                  </a>
+                ))}
+              </div>
+            </nav>
+          </div>
         </div>
         <form className="filter-bar task-filter-bar" action={`/projects/${project.id}`}>
+          <input name="taskStatus" type="hidden" value={selectedTaskStatus} />
           <div className="filter-field">
             <label htmlFor="task-search">Search</label>
             <input id="task-search" name="q" type="search" defaultValue={queryText} placeholder="Task or assignee" />
@@ -306,16 +359,6 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               {(Object.keys(TASK_PRIORITY_LABELS) as TaskPriorityFilter[]).map((priority) => (
                 <option value={priority} key={priority}>
                   {TASK_PRIORITY_LABELS[priority]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label htmlFor="task-status">Status</label>
-            <select id="task-status" name="taskStatus" defaultValue={selectedTaskStatus}>
-              {(Object.keys(TASK_STATUS_LABELS) as TaskStatusFilter[]).map((status) => (
-                <option value={status} key={status}>
-                  {TASK_STATUS_LABELS[status]}
                 </option>
               ))}
             </select>

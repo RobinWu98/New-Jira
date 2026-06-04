@@ -762,7 +762,6 @@ a.button {
     minmax(170px, 1.2fr)
     minmax(170px, 1fr)
     minmax(130px, 0.75fr)
-    minmax(140px, 0.75fr)
     minmax(150px, 0.8fr)
     auto;
 }
@@ -1060,6 +1059,10 @@ a.button {
   font-size: 23px;
 }
 
+.project-group-toolbar h2 {
+  margin: 0;
+}
+
 .project-keyword {
   display: inline-block;
   border: 2px solid var(--line);
@@ -1073,6 +1076,19 @@ a.button {
 }
 
 .project-keyword-done {
+  background: var(--done-bg);
+}
+
+.project-keyword-all,
+.task-view-keyword-all {
+  background: var(--surface-soft);
+}
+
+.task-view-keyword-active {
+  background: var(--active-bg);
+}
+
+.task-view-keyword-done {
   background: var(--done-bg);
 }
 
