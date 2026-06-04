@@ -27,6 +27,21 @@ type ProjectRow = {
   task_count: string;
 };
 
+type ProjectStatusFilter = "active" | "done";
+
+type ProjectsPageProps = {
+  searchParams: Promise<{ status?: string }>;
+};
+
+const PROJECT_STATUS_LABELS: Record<ProjectStatusFilter, string> = {
+  active: "Active",
+  done: "Completed"
+};
+
+function normalizeStatusFilter(value: string | undefined): ProjectStatusFilter {
+  return value === "done" || value === "completed" ? "done" : "active";
+}
+
 function toDateInput(value: Date | string) {
   if (value instanceof Date) {
     return value.toISOString().slice(0, 10);
@@ -75,7 +90,7 @@ function ProjectTable({
   return (
     <div className={`project-group project-group-${status}`}>
       <h3>
-        <span className={`project-keyword project-keyword-${status}`}>{status === "active" ? "Active" : "Done"}</span>{" "}
+        <span className={`project-keyword project-keyword-${status}`}>{PROJECT_STATUS_LABELS[status]}</span>{" "}
         Projects
       </h3>
       <div className={`project-list project-list-${status}`} role="table" aria-label={title}>
@@ -110,13 +125,19 @@ function ProjectTable({
             </span>
           </div>
         ))}
+        {projects.length === 0 ? (
+          <div className="project-list-empty" role="row">
+            No {PROJECT_STATUS_LABELS[status].toLowerCase()} projects yet.
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({ searchParams }: ProjectsPageProps) {
   const user = await requireUser();
+  const selectedStatus = normalizeStatusFilter((await searchParams).status);
 
   const [usersResult, projectsResult] = await Promise.all([
     query<UserRow>("SELECT id, name, email::text AS email FROM users ORDER BY name NULLS LAST, email"),
@@ -144,8 +165,10 @@ export default async function ProjectsPage() {
     id: row.id,
     label: row.name ? `${row.name} (${row.email})` : row.email
   }));
-  const activeProjects = projectsResult.rows.filter((project) => normalizeProjectStatus(project.status) === "active");
-  const doneProjects = projectsResult.rows.filter((project) => normalizeProjectStatus(project.status) === "done");
+  const projectGroups = {
+    active: projectsResult.rows.filter((project) => normalizeProjectStatus(project.status) === "active"),
+    done: projectsResult.rows.filter((project) => normalizeProjectStatus(project.status) === "done")
+  } satisfies Record<ProjectStatusFilter, ProjectRow[]>;
   const canModify = user.role === "admin";
 
   return (
@@ -157,6 +180,17 @@ export default async function ProjectsPage() {
         <div className="section-toolbar">
           <h2>All Project List</h2>
           <div className="toolbar-actions">
+            <nav className="segmented-nav" aria-label="Project status">
+              {(["active", "done"] as ProjectStatusFilter[]).map((status) => (
+                <a
+                  className={`button secondary${selectedStatus === status ? " is-active" : ""}`}
+                  href={`/projects?status=${status}`}
+                  key={status}
+                >
+                  {PROJECT_STATUS_LABELS[status]} ({projectGroups[status].length})
+                </a>
+              ))}
+            </nav>
             {canModify ? <CreateProjectModal users={users} currentUserId={user.id} /> : null}
             <a className="button secondary" href="/main-page">
               Back
@@ -164,17 +198,9 @@ export default async function ProjectsPage() {
           </div>
         </div>
         <ProjectTable
-          title="Active Projects"
-          status="active"
-          projects={activeProjects}
-          users={users}
-          currentUserId={user.id}
-          canModify={canModify}
-        />
-        <ProjectTable
-          title="Done Projects"
-          status="done"
-          projects={doneProjects}
+          title={`${PROJECT_STATUS_LABELS[selectedStatus]} Projects`}
+          status={selectedStatus}
+          projects={projectGroups[selectedStatus]}
           users={users}
           currentUserId={user.id}
           canModify={canModify}

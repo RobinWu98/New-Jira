@@ -274,7 +274,7 @@ export async function deleteProjectAction(_: AuthActionState, formData: FormData
 }
 
 export async function createTaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  await requireAdmin();
+  await requireUser();
   const projectId = asString(formData, "projectId");
   const title = asString(formData, "title");
   const assignedToId = asString(formData, "assignedToId");

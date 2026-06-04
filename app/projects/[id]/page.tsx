@@ -135,7 +135,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         <div className="section-toolbar">
           <h2>Tasks View</h2>
           <div className="toolbar-actions">
-            {canModify ? <CreateTaskModal projectId={project.id} users={users} /> : null}
+            <CreateTaskModal projectId={project.id} users={users} />
             <a className="button secondary" href="/projects">
               Back
             </a>
