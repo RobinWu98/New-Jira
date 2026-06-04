@@ -11,6 +11,7 @@ import { query } from "@/lib/db";
 
 type ProjectDetailPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ assignee?: string; priority?: string; q?: string; sort?: string; taskStatus?: string }>;
 };
 
 type ProjectRow = {
@@ -38,6 +39,35 @@ type TaskRow = {
   assigned_to_id: string;
   assigned_to_name: string | null;
   assigned_to_email: string;
+  created_at: Date | string;
+};
+
+type TaskPriorityFilter = "all" | "high" | "medium" | "low";
+type TaskStatusFilter = "all" | "active" | "todo" | "in_progress" | "done";
+type TaskSort = "default" | "priority" | "status" | "assignee" | "title" | "newest";
+
+const TASK_PRIORITY_LABELS: Record<TaskPriorityFilter, string> = {
+  all: "All priorities",
+  high: "High",
+  medium: "Medium",
+  low: "Low"
+};
+
+const TASK_STATUS_LABELS: Record<TaskStatusFilter, string> = {
+  all: "All statuses",
+  active: "Active only",
+  todo: "Todo",
+  in_progress: "In Progress",
+  done: "Done"
+};
+
+const TASK_SORT_LABELS: Record<TaskSort, string> = {
+  default: "Active + Priority",
+  priority: "Priority",
+  status: "Status",
+  assignee: "Assignee",
+  title: "Task A-Z",
+  newest: "Newest"
 };
 
 function formatDate(value: Date | string) {
@@ -57,6 +87,32 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function normalizeTaskPriorityFilter(value: string | undefined): TaskPriorityFilter {
+  return value === "high" || value === "medium" || value === "low" ? value : "all";
+}
+
+function normalizeTaskStatusFilter(value: string | undefined): TaskStatusFilter {
+  return value === "active" || value === "todo" || value === "in_progress" || value === "done" ? value : "all";
+}
+
+function normalizeTaskSort(value: string | undefined): TaskSort {
+  return value === "priority" || value === "status" || value === "assignee" || value === "title" || value === "newest"
+    ? value
+    : "default";
+}
+
+function getDateTime(value: Date | string) {
+  return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+
+function getPriorityRank(priority: string) {
+  return priority === "high" ? 0 : priority === "medium" ? 1 : 2;
+}
+
+function getStatusRank(status: string) {
+  return status === "done" ? 2 : status === "in_progress" ? 1 : 0;
+}
+
 function toTaskFormData(projectId: string, task: TaskRow): TaskFormData {
   return {
     id: task.id,
@@ -68,9 +124,15 @@ function toTaskFormData(projectId: string, task: TaskRow): TaskFormData {
   };
 }
 
-export default async function ProjectDetailPage({ params }: ProjectDetailPageProps) {
+export default async function ProjectDetailPage({ params, searchParams }: ProjectDetailPageProps) {
   const user = await requireUser();
   const { id } = await params;
+  const filters = await searchParams;
+  const selectedAssigneeId = filters.assignee ?? "";
+  const selectedPriority = normalizeTaskPriorityFilter(filters.priority);
+  const selectedTaskStatus = normalizeTaskStatusFilter(filters.taskStatus);
+  const selectedTaskSort = normalizeTaskSort(filters.sort);
+  const queryText = (filters.q ?? "").trim();
 
   if (!isUuid(id)) {
     notFound();
@@ -101,13 +163,14 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
          tasks.status,
          tasks.assigned_to_id,
          users.name AS assigned_to_name,
-         users.email::text AS assigned_to_email
+         users.email::text AS assigned_to_email,
+         tasks.created_at
        FROM tasks
        JOIN users ON users.id = tasks.assigned_to_id
        WHERE tasks.project_id = $1
        ORDER BY
-         CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+         CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          tasks.created_at DESC`,
       [id]
     ),
@@ -125,6 +188,59 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
     label: user.name ? `${user.name} (${user.email})` : user.email
   }));
   const canModify = user.role === "admin";
+  const filteredTasks = tasksResult.rows
+    .filter((task) => (selectedAssigneeId ? task.assigned_to_id === selectedAssigneeId : true))
+    .filter((task) => (selectedPriority === "all" ? true : task.priority === selectedPriority))
+    .filter((task) => {
+      if (selectedTaskStatus === "all") {
+        return true;
+      }
+
+      if (selectedTaskStatus === "active") {
+        return task.status !== "done";
+      }
+
+      return task.status === selectedTaskStatus;
+    })
+    .filter((task) => {
+      if (!queryText) {
+        return true;
+      }
+
+      const needle = queryText.toLowerCase();
+      return [task.title, task.assigned_to_name ?? "", task.assigned_to_email].some((value) =>
+        value.toLowerCase().includes(needle)
+      );
+    })
+    .sort((left, right) => {
+      if (selectedTaskSort === "priority") {
+        return getPriorityRank(left.priority) - getPriorityRank(right.priority);
+      }
+
+      if (selectedTaskSort === "status") {
+        return getStatusRank(left.status) - getStatusRank(right.status);
+      }
+
+      if (selectedTaskSort === "assignee") {
+        const leftAssignee = left.assigned_to_name || left.assigned_to_email;
+        const rightAssignee = right.assigned_to_name || right.assigned_to_email;
+        return leftAssignee.localeCompare(rightAssignee);
+      }
+
+      if (selectedTaskSort === "title") {
+        return left.title.localeCompare(right.title);
+      }
+
+      if (selectedTaskSort === "newest") {
+        return getDateTime(right.created_at) - getDateTime(left.created_at);
+      }
+
+      return (
+        getStatusRank(left.status) - getStatusRank(right.status) ||
+        getPriorityRank(left.priority) - getPriorityRank(right.priority) ||
+        getDateTime(right.created_at) - getDateTime(left.created_at)
+      );
+    });
 
   return (
     <AppFrame shellClassName="project-shell" currentProjectId={project.id}>
@@ -162,7 +278,67 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         </div>
       </section>
       <section className="panel">
-        <h2>Tasks</h2>
+        <div className="section-toolbar">
+          <h2>Tasks</h2>
+          <span className="result-count">
+            {filteredTasks.length} of {tasksResult.rows.length}
+          </span>
+        </div>
+        <form className="filter-bar task-filter-bar" action={`/projects/${project.id}`}>
+          <div className="filter-field">
+            <label htmlFor="task-search">Search</label>
+            <input id="task-search" name="q" type="search" defaultValue={queryText} placeholder="Task or assignee" />
+          </div>
+          <div className="filter-field">
+            <label htmlFor="task-assignee">Assignee</label>
+            <select id="task-assignee" name="assignee" defaultValue={selectedAssigneeId}>
+              <option value="">Everyone</option>
+              {users.map((assignee) => (
+                <option value={assignee.id} key={assignee.id}>
+                  {assignee.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-field">
+            <label htmlFor="task-priority">Priority</label>
+            <select id="task-priority" name="priority" defaultValue={selectedPriority}>
+              {(Object.keys(TASK_PRIORITY_LABELS) as TaskPriorityFilter[]).map((priority) => (
+                <option value={priority} key={priority}>
+                  {TASK_PRIORITY_LABELS[priority]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-field">
+            <label htmlFor="task-status">Status</label>
+            <select id="task-status" name="taskStatus" defaultValue={selectedTaskStatus}>
+              {(Object.keys(TASK_STATUS_LABELS) as TaskStatusFilter[]).map((status) => (
+                <option value={status} key={status}>
+                  {TASK_STATUS_LABELS[status]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-field">
+            <label htmlFor="task-sort">Sort</label>
+            <select id="task-sort" name="sort" defaultValue={selectedTaskSort}>
+              {(Object.keys(TASK_SORT_LABELS) as TaskSort[]).map((sort) => (
+                <option value={sort} key={sort}>
+                  {TASK_SORT_LABELS[sort]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-actions">
+            <button className="button" type="submit">
+              Apply
+            </button>
+            <a className="button secondary" href={`/projects/${project.id}`}>
+              Reset
+            </a>
+          </div>
+        </form>
         <div className="tasks-table" role="table" aria-label={`${project.name} tasks`}>
           <div className={`tasks-table-row tasks-table-head task-detail-row${canModify ? "" : " task-detail-row-readonly"}`} role="row">
             <strong role="columnheader">Task</strong>
@@ -171,7 +347,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
             <strong role="columnheader">Status</strong>
             {canModify ? <strong role="columnheader">Actions</strong> : null}
           </div>
-          {tasksResult.rows.map((task) => (
+          {filteredTasks.map((task) => (
             <div className={`tasks-table-row task-detail-row${canModify ? "" : " task-detail-row-readonly"}`} role="row" key={task.id}>
               <span role="cell">{task.title}</span>
               <span role="cell">{task.assigned_to_name || task.assigned_to_email}</span>
@@ -189,6 +365,11 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
               ) : null}
             </div>
           ))}
+          {filteredTasks.length === 0 ? (
+            <div className="tasks-table-empty" role="row">
+              No tasks match these filters.
+            </div>
+          ) : null}
         </div>
       </section>
     </AppFrame>
