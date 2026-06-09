@@ -1426,23 +1426,25 @@ a.button {
 }
 
 .task-expand-trigger {
-  display: inline-grid;
+  display: inline-flex;
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 1px solid var(--line);
-  background: #ffffff;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  min-height: 24px;
+  border: 0;
+  background: transparent;
   color: #44546f;
   padding: 0;
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
+  line-height: 1;
   cursor: pointer;
 }
 
 .task-expand-trigger:hover {
-  background: #e9f2ff;
+  background: transparent;
   color: #0c66e4;
 }
 
@@ -1479,6 +1481,27 @@ a.button {
   color: #44546f;
   font-size: 12px;
   text-transform: uppercase;
+}
+
+.subtask-add-button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #0c66e4;
+  padding: 0;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.subtask-add-button:hover {
+  background: #e9f2ff;
 }
 
 .subtasks-list {

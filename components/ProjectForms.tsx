@@ -489,9 +489,21 @@ function SubtaskForm({
   );
 }
 
-export function CreateSubtaskModal({ projectId, taskId, users }: { projectId: string; taskId: string; users: UserOption[] }) {
+export function CreateSubtaskModal({
+  projectId,
+  taskId,
+  users,
+  trigger = "Create Sub-task",
+  triggerClassName = "button"
+}: {
+  projectId: string;
+  taskId: string;
+  users: UserOption[];
+  trigger?: ReactNode;
+  triggerClassName?: string;
+}) {
   return (
-    <Modal title="Create Sub-task" trigger="Create Sub-task">
+    <Modal title="Create Sub-task" trigger={trigger} triggerClassName={triggerClassName}>
       <SubtaskForm projectId={projectId} taskId={taskId} users={users} />
     </Modal>
   );
@@ -604,7 +616,13 @@ export function TaskWithSubtasks({
         <div className="subtasks-panel" role="row">
           <div className="subtasks-panel-header">
             <strong>Sub-tasks</strong>
-            <CreateSubtaskModal projectId={task.projectId} taskId={task.id} users={users} />
+            <CreateSubtaskModal
+              projectId={task.projectId}
+              taskId={task.id}
+              trigger="+"
+              triggerClassName="subtask-add-button"
+              users={users}
+            />
           </div>
           {subtasks.length ? (
             <div className="subtasks-list">
