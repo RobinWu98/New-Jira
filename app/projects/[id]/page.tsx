@@ -2,8 +2,9 @@ import { notFound } from "next/navigation";
 import { AppFrame } from "@/components/AppFrame";
 import {
   CreateTaskModal,
-  DeleteTaskForm,
-  EditTaskModal,
+  TaskWithSubtasks,
+  type SubtaskListItemData,
+  type TaskListItemData,
   type TaskFormData
 } from "@/components/ProjectForms";
 import { requireUser } from "@/lib/auth";
@@ -34,6 +35,22 @@ type UserRow = {
 type TaskRow = {
   id: string;
   title: string;
+  start_date: Date | string | null;
+  due_date: Date | string | null;
+  priority: string;
+  status: string;
+  assigned_to_id: string;
+  assigned_to_name: string | null;
+  assigned_to_email: string;
+  created_at: Date | string;
+};
+
+type SubtaskRow = {
+  id: string;
+  task_id: string;
+  title: string;
+  start_date: Date | string | null;
+  due_date: Date | string | null;
   priority: string;
   status: string;
   assigned_to_id: string;
@@ -44,7 +61,7 @@ type TaskRow = {
 
 type TaskPriorityFilter = "all" | "high" | "medium" | "low";
 type TaskStatusFilter = "active" | "done" | "all";
-type TaskSort = "default" | "priority" | "status" | "assignee" | "title" | "newest";
+type TaskSort = "default" | "due_date" | "priority" | "status" | "assignee" | "title" | "newest";
 
 const TASK_PRIORITY_LABELS: Record<TaskPriorityFilter, string> = {
   all: "All priorities",
@@ -60,7 +77,8 @@ const TASK_STATUS_LABELS: Record<TaskStatusFilter, string> = {
 };
 
 const TASK_SORT_LABELS: Record<TaskSort, string> = {
-  default: "Active + Priority",
+  default: "Due Date + Priority",
+  due_date: "Due Date",
   priority: "Priority",
   status: "Status",
   assignee: "Assignee",
@@ -72,6 +90,10 @@ function formatDate(value: Date | string) {
   const date = value instanceof Date ? value : new Date(`${value}T00:00:00`);
 
   return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+}
+
+function formatOptionalDate(value: Date | string | null) {
+  return value ? formatDate(value) : "No date";
 }
 
 function formatLabel(value: string) {
@@ -94,13 +116,22 @@ function normalizeTaskStatusFilter(value: string | undefined): TaskStatusFilter 
 }
 
 function normalizeTaskSort(value: string | undefined): TaskSort {
-  return value === "priority" || value === "status" || value === "assignee" || value === "title" || value === "newest"
+  return value === "due_date" ||
+    value === "priority" ||
+    value === "status" ||
+    value === "assignee" ||
+    value === "title" ||
+    value === "newest"
     ? value
     : "default";
 }
 
 function getDateTime(value: Date | string) {
   return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+
+function getNullableDateTime(value: Date | string | null) {
+  return value ? getDateTime(value) : Number.POSITIVE_INFINITY;
 }
 
 function getPriorityRank(priority: string) {
@@ -147,9 +178,58 @@ function toTaskFormData(projectId: string, task: TaskRow): TaskFormData {
     projectId,
     title: task.title,
     assignedToId: task.assigned_to_id,
+    startDate: task.start_date ? toDateInput(task.start_date) : "",
+    dueDate: task.due_date ? toDateInput(task.due_date) : "",
     priority: task.priority,
     status: task.status
   };
+}
+
+function toTaskListItemData(projectId: string, projectName: string, task: TaskRow): TaskListItemData {
+  return {
+    ...toTaskFormData(projectId, task),
+    assignedTo: task.assigned_to_name || task.assigned_to_email,
+    startLabel: formatOptionalDate(task.start_date),
+    dueLabel: task.due_date ? formatDate(task.due_date) : "No due date",
+    projectName
+  };
+}
+
+function toSubtaskListItemData(projectId: string, subtask: SubtaskRow): SubtaskListItemData {
+  return {
+    id: subtask.id,
+    projectId,
+    taskId: subtask.task_id,
+    title: subtask.title,
+    assignedToId: subtask.assigned_to_id,
+    startDate: subtask.start_date ? toDateInput(subtask.start_date) : "",
+    dueDate: subtask.due_date ? toDateInput(subtask.due_date) : "",
+    priority: subtask.priority,
+    status: subtask.status,
+    assignedTo: subtask.assigned_to_name || subtask.assigned_to_email,
+    startLabel: formatOptionalDate(subtask.start_date),
+    dueLabel: subtask.due_date ? formatDate(subtask.due_date) : "No due date"
+  };
+}
+
+function groupSubtasksByTask(subtasks: SubtaskRow[], projectId: string) {
+  const groups = new Map<string, SubtaskListItemData[]>();
+
+  for (const subtask of subtasks) {
+    const existing = groups.get(subtask.task_id) ?? [];
+    existing.push(toSubtaskListItemData(projectId, subtask));
+    groups.set(subtask.task_id, existing);
+  }
+
+  return groups;
+}
+
+function toDateInput(value: Date | string) {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  return value.slice(0, 10);
 }
 
 export default async function ProjectDetailPage({ params, searchParams }: ProjectDetailPageProps) {
@@ -166,7 +246,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     notFound();
   }
 
-  const [projectResult, tasksResult, usersResult] = await Promise.all([
+  const [projectResult, tasksResult, subtasksResult, usersResult] = await Promise.all([
     query<ProjectRow>(
       `SELECT
          projects.id,
@@ -187,6 +267,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       `SELECT
          tasks.id,
          tasks.title,
+         tasks.start_date,
+         tasks.due_date,
          tasks.priority,
          tasks.status,
          tasks.assigned_to_id,
@@ -198,8 +280,33 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
        WHERE tasks.project_id = $1
        ORDER BY
          CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+         tasks.due_date ASC NULLS LAST,
          CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          tasks.created_at DESC`,
+      [id]
+    ),
+    query<SubtaskRow>(
+      `SELECT
+         subtasks.id,
+         subtasks.task_id,
+         subtasks.title,
+         subtasks.start_date,
+         subtasks.due_date,
+         subtasks.priority,
+         subtasks.status,
+         subtasks.assigned_to_id,
+         users.name AS assigned_to_name,
+         users.email::text AS assigned_to_email,
+         subtasks.created_at
+       FROM subtasks
+       JOIN tasks ON tasks.id = subtasks.task_id
+       JOIN users ON users.id = subtasks.assigned_to_id
+       WHERE tasks.project_id = $1
+       ORDER BY
+         subtasks.due_date ASC NULLS LAST,
+         CASE subtasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+         CASE subtasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+         subtasks.created_at DESC`,
       [id]
     ),
     query<UserRow>("SELECT id, name, email::text AS email FROM users ORDER BY name NULLS LAST, email")
@@ -216,6 +323,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     label: user.name ? `${user.name} (${user.email})` : user.email
   }));
   const canModify = user.role === "admin";
+  const subtasksByTask = groupSubtasksByTask(subtasksResult.rows, project.id);
   const baseFilteredTasks = tasksResult.rows
     .filter((task) => (selectedAssigneeId ? task.assigned_to_id === selectedAssigneeId : true))
     .filter((task) => (selectedPriority === "all" ? true : task.priority === selectedPriority))
@@ -235,6 +343,10 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     all: baseFilteredTasks
   } satisfies Record<TaskStatusFilter, TaskRow[]>;
   const filteredTasks = [...taskGroups[selectedTaskStatus]].sort((left, right) => {
+      if (selectedTaskSort === "due_date") {
+        return getNullableDateTime(left.due_date) - getNullableDateTime(right.due_date);
+      }
+
       if (selectedTaskSort === "priority") {
         return getPriorityRank(left.priority) - getPriorityRank(right.priority);
       }
@@ -258,6 +370,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       }
 
       return (
+        getNullableDateTime(left.due_date) - getNullableDateTime(right.due_date) ||
         getStatusRank(left.status) - getStatusRank(right.status) ||
         getPriorityRank(left.priority) - getPriorityRank(right.priority) ||
         getDateTime(right.created_at) - getDateTime(left.created_at)
@@ -310,6 +423,17 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             <span className="result-count">
               {filteredTasks.length} of {tasksResult.rows.length}
             </span>
+            <form className="table-title-search" action={`/projects/${project.id}`}>
+              <input name="taskStatus" type="hidden" value={selectedTaskStatus} />
+              {selectedAssigneeId ? <input name="assignee" type="hidden" value={selectedAssigneeId} /> : null}
+              {selectedPriority !== "all" ? <input name="priority" type="hidden" value={selectedPriority} /> : null}
+              {selectedTaskSort !== "default" ? <input name="sort" type="hidden" value={selectedTaskSort} /> : null}
+              <label className="sr-only" htmlFor="task-search">Search tasks</label>
+              <input id="task-search" name="q" type="search" defaultValue={queryText} placeholder="Search tasks" />
+              <button className="button secondary" type="submit">
+                Search
+              </button>
+            </form>
             <nav className="table-view-switch" aria-label="Task table view">
               <button className="button secondary table-view-trigger" type="button" aria-haspopup="true">
                 Table View: {TASK_STATUS_LABELS[selectedTaskStatus]} ({taskGroups[selectedTaskStatus].length})
@@ -338,10 +462,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         </div>
         <form className="filter-bar task-filter-bar" action={`/projects/${project.id}`}>
           <input name="taskStatus" type="hidden" value={selectedTaskStatus} />
-          <div className="filter-field">
-            <label htmlFor="task-search">Search</label>
-            <input id="task-search" name="q" type="search" defaultValue={queryText} placeholder="Task or assignee" />
-          </div>
+          {queryText ? <input name="q" type="hidden" value={queryText} /> : null}
           <div className="filter-field">
             <label htmlFor="task-assignee">Assignee</label>
             <select id="task-assignee" name="assignee" defaultValue={selectedAssigneeId}>
@@ -386,27 +507,20 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           <div className={`tasks-table-row tasks-table-head task-detail-row${canModify ? "" : " task-detail-row-readonly"}`} role="row">
             <strong role="columnheader">Task</strong>
             <strong role="columnheader">Assigned To</strong>
+            <strong role="columnheader">Start</strong>
+            <strong role="columnheader">Due Date</strong>
             <strong role="columnheader">Priority</strong>
             <strong role="columnheader">Status</strong>
             {canModify ? <strong role="columnheader">Actions</strong> : null}
           </div>
           {filteredTasks.map((task) => (
-            <div className={`tasks-table-row task-detail-row${canModify ? "" : " task-detail-row-readonly"}`} role="row" key={task.id}>
-              <span role="cell">{task.title}</span>
-              <span role="cell">{task.assigned_to_name || task.assigned_to_email}</span>
-              <span role="cell">
-                <span className={`task-pill priority-${task.priority}`}>{formatLabel(task.priority)}</span>
-              </span>
-              <span role="cell">
-                <span className={`task-pill task-status-${task.status}`}>{formatLabel(task.status)}</span>
-              </span>
-              {canModify ? (
-                <span role="cell" className="table-actions">
-                  <EditTaskModal projectId={project.id} users={users} task={toTaskFormData(project.id, task)} />
-                  <DeleteTaskForm projectId={project.id} taskId={task.id} />
-                </span>
-              ) : null}
-            </div>
+            <TaskWithSubtasks
+              canModify={canModify}
+              key={task.id}
+              subtasks={subtasksByTask.get(task.id) ?? []}
+              task={toTaskListItemData(project.id, project.name, task)}
+              users={users}
+            />
           ))}
           {filteredTasks.length === 0 ? (
             <div className="tasks-table-empty" role="row">

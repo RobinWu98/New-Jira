@@ -1,7 +1,0 @@
-interface:
-  display_name: "jobTracker Design Strategy"
-  short_description: "Keep jobTracker UI aligned and project files English-only"
-  default_prompt: "Use $jobtracker-design-strategy to design or review this jobTracker page so it matches the existing app."
-
-policy:
-  allow_implicit_invocation: true

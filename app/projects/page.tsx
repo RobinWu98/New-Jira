@@ -119,7 +119,8 @@ function ProjectTable({
   users,
   currentUserId,
   canModify,
-  viewSwitch
+  viewSwitch,
+  searchForm
 }: {
   title: string;
   status: ProjectStatusFilter;
@@ -128,6 +129,7 @@ function ProjectTable({
   currentUserId: string;
   canModify: boolean;
   viewSwitch: React.ReactNode;
+  searchForm: React.ReactNode;
 }) {
   return (
     <div className={`project-group project-group-${status}`}>
@@ -135,7 +137,10 @@ function ProjectTable({
         <h3>
           <span className={`project-keyword project-keyword-${status}`}>{PROJECT_STATUS_LABELS[status]} Projects</span>
         </h3>
-        {viewSwitch}
+        <div className="toolbar-actions">
+          {searchForm}
+          {viewSwitch}
+        </div>
       </div>
       <div className={`project-list project-list-${status}`} role="table" aria-label={title}>
         <div className="project-list-row project-list-head" role="row">
@@ -266,12 +271,9 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
             </a>
           </div>
         </div>
-        <form className="filter-bar" action="/projects">
+        <form className="filter-bar project-filter-bar" action="/projects">
           <input name="status" type="hidden" value={selectedStatus} />
-          <div className="filter-field">
-            <label htmlFor="project-search">Search</label>
-            <input id="project-search" name="q" type="search" defaultValue={queryText} placeholder="Project, owner, note" />
-          </div>
+          {queryText ? <input name="q" type="hidden" value={queryText} /> : null}
           <div className="filter-field">
             <label htmlFor="project-owner">Owner</label>
             <select id="project-owner" name="owner" defaultValue={selectedOwnerId}>
@@ -309,6 +311,18 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
           users={users}
           currentUserId={user.id}
           canModify={canModify}
+          searchForm={
+            <form className="table-title-search" action="/projects">
+              <input name="status" type="hidden" value={selectedStatus} />
+              {selectedOwnerId ? <input name="owner" type="hidden" value={selectedOwnerId} /> : null}
+              {selectedSort !== "ddl_asc" ? <input name="sort" type="hidden" value={selectedSort} /> : null}
+              <label className="sr-only" htmlFor="project-search">Search projects</label>
+              <input id="project-search" name="q" type="search" defaultValue={queryText} placeholder="Search projects" />
+              <button className="button secondary" type="submit">
+                Search
+              </button>
+            </form>
+          }
           viewSwitch={
             <nav className="table-view-switch" aria-label="Project table view">
               <button className="button secondary table-view-trigger" type="button" aria-haspopup="true">

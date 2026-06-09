@@ -278,6 +278,8 @@ export async function createTaskAction(_: AuthActionState, formData: FormData): 
   const projectId = asString(formData, "projectId");
   const title = asString(formData, "title");
   const assignedToId = asString(formData, "assignedToId");
+  const startDate = asString(formData, "startDate");
+  const dueDate = asString(formData, "dueDate");
   const priority = normalizeTaskPriority(asString(formData, "priority"));
   const status = normalizeTaskStatus(asString(formData, "status"));
 
@@ -293,6 +295,10 @@ export async function createTaskAction(_: AuthActionState, formData: FormData): 
     return { error: "Please choose who this task is assigned to." };
   }
 
+  if (startDate && dueDate && dueDate < startDate) {
+    return { error: "Task due date cannot be earlier than the start date." };
+  }
+
   const projectResult = await query<{ id: string }>("SELECT id FROM projects WHERE id = $1 LIMIT 1", [projectId]);
 
   if (!projectResult.rows[0]) {
@@ -306,9 +312,9 @@ export async function createTaskAction(_: AuthActionState, formData: FormData): 
   }
 
   await query(
-    `INSERT INTO tasks (project_id, title, assigned_to_id, priority, status)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [projectId, title, assignedToId, priority, status]
+    `INSERT INTO tasks (project_id, title, assigned_to_id, start_date, due_date, priority, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [projectId, title, assignedToId, startDate || null, dueDate || null, priority, status]
   );
 
   revalidatePath("/projects");
@@ -322,6 +328,8 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
   const projectId = asString(formData, "projectId");
   const title = asString(formData, "title");
   const assignedToId = asString(formData, "assignedToId");
+  const startDate = asString(formData, "startDate");
+  const dueDate = asString(formData, "dueDate");
   const priority = normalizeTaskPriority(asString(formData, "priority"));
   const status = normalizeTaskStatus(asString(formData, "status"));
 
@@ -337,6 +345,10 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
     return { error: "Please choose who this task is assigned to." };
   }
 
+  if (startDate && dueDate && dueDate < startDate) {
+    return { error: "Task due date cannot be earlier than the start date." };
+  }
+
   const assigneeResult = await query<{ id: string }>("SELECT id FROM users WHERE id = $1 LIMIT 1", [assignedToId]);
 
   if (!assigneeResult.rows[0]) {
@@ -347,12 +359,14 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
     `UPDATE tasks
      SET title = $1,
          assigned_to_id = $2,
-         priority = $3,
-         status = $4,
+         start_date = $3,
+         due_date = $4,
+         priority = $5,
+         status = $6,
          updated_at = now()
-     WHERE id = $5 AND project_id = $6
+     WHERE id = $7 AND project_id = $8
      RETURNING id`,
-    [title, assignedToId, priority, status, taskId, projectId]
+    [title, assignedToId, startDate || null, dueDate || null, priority, status, taskId, projectId]
   );
 
   if (!result.rows[0]) {
@@ -362,6 +376,144 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   return { message: "Task has been updated." };
+}
+
+export async function createSubtaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  await requireUser();
+  const projectId = asString(formData, "projectId");
+  const taskId = asString(formData, "taskId");
+  const title = asString(formData, "title");
+  const assignedToId = asString(formData, "assignedToId");
+  const startDate = asString(formData, "startDate");
+  const dueDate = asString(formData, "dueDate");
+  const priority = normalizeTaskPriority(asString(formData, "priority"));
+  const status = normalizeTaskStatus(asString(formData, "status"));
+
+  if (!projectId || !taskId) {
+    return { error: "Parent task is missing." };
+  }
+
+  if (!title) {
+    return { error: "Please enter a sub-task title." };
+  }
+
+  if (!assignedToId) {
+    return { error: "Please choose who this sub-task is assigned to." };
+  }
+
+  if (startDate && dueDate && dueDate < startDate) {
+    return { error: "Sub-task due date cannot be earlier than the start date." };
+  }
+
+  const taskResult = await query<{ id: string }>(
+    "SELECT id FROM tasks WHERE id = $1 AND project_id = $2 LIMIT 1",
+    [taskId, projectId]
+  );
+
+  if (!taskResult.rows[0]) {
+    return { error: "Parent task is invalid." };
+  }
+
+  const assigneeResult = await query<{ id: string }>("SELECT id FROM users WHERE id = $1 LIMIT 1", [assignedToId]);
+
+  if (!assigneeResult.rows[0]) {
+    return { error: "Assigned user is invalid." };
+  }
+
+  await query(
+    `INSERT INTO subtasks (task_id, title, assigned_to_id, start_date, due_date, priority, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [taskId, title, assignedToId, startDate || null, dueDate || null, priority, status]
+  );
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  return { message: "Sub-task has been created." };
+}
+
+export async function updateSubtaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  await requireAdmin();
+  const projectId = asString(formData, "projectId");
+  const taskId = asString(formData, "taskId");
+  const subtaskId = asString(formData, "subtaskId");
+  const title = asString(formData, "title");
+  const assignedToId = asString(formData, "assignedToId");
+  const startDate = asString(formData, "startDate");
+  const dueDate = asString(formData, "dueDate");
+  const priority = normalizeTaskPriority(asString(formData, "priority"));
+  const status = normalizeTaskStatus(asString(formData, "status"));
+
+  if (!projectId || !taskId || !subtaskId) {
+    return { error: "Sub-task is missing." };
+  }
+
+  if (!title) {
+    return { error: "Please enter a sub-task title." };
+  }
+
+  if (!assignedToId) {
+    return { error: "Please choose who this sub-task is assigned to." };
+  }
+
+  if (startDate && dueDate && dueDate < startDate) {
+    return { error: "Sub-task due date cannot be earlier than the start date." };
+  }
+
+  const assigneeResult = await query<{ id: string }>("SELECT id FROM users WHERE id = $1 LIMIT 1", [assignedToId]);
+
+  if (!assigneeResult.rows[0]) {
+    return { error: "Assigned user is invalid." };
+  }
+
+  const result = await query<{ id: string }>(
+    `UPDATE subtasks
+     SET title = $1,
+         assigned_to_id = $2,
+         start_date = $3,
+         due_date = $4,
+         priority = $5,
+         status = $6,
+         updated_at = now()
+     FROM tasks
+     WHERE subtasks.id = $7
+       AND subtasks.task_id = $8
+       AND tasks.id = subtasks.task_id
+       AND tasks.project_id = $9
+     RETURNING subtasks.id`,
+    [title, assignedToId, startDate || null, dueDate || null, priority, status, subtaskId, taskId, projectId]
+  );
+
+  if (!result.rows[0]) {
+    return { error: "Sub-task was not found." };
+  }
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  return { message: "Sub-task has been updated." };
+}
+
+export async function deleteSubtaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  await requireAdmin();
+  const projectId = asString(formData, "projectId");
+  const taskId = asString(formData, "taskId");
+  const subtaskId = asString(formData, "subtaskId");
+
+  if (!projectId || !taskId || !subtaskId) {
+    return { error: "Sub-task is missing." };
+  }
+
+  await query(
+    `DELETE FROM subtasks
+     USING tasks
+     WHERE subtasks.id = $1
+       AND subtasks.task_id = $2
+       AND tasks.id = subtasks.task_id
+       AND tasks.project_id = $3`,
+    [subtaskId, taskId, projectId]
+  );
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  return { message: "Sub-task has been deleted." };
 }
 
 export async function deleteTaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {

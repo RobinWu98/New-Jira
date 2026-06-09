@@ -1,4 +1,5 @@
 import { AppFrame } from "@/components/AppFrame";
+import { TaskDetailModal } from "@/components/ProjectForms";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -17,6 +18,8 @@ type TeamTaskRow = {
   project_status: string;
   task_id: string;
   task_title: string;
+  task_start_date: Date | string | null;
+  task_due_date: Date | string | null;
   task_priority: string;
   task_status: string;
 };
@@ -33,6 +36,16 @@ function formatLabel(value: string) {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function formatDate(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(`${value}T00:00:00`);
+
+  return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+}
+
+function formatOptionalDate(value: Date | string | null) {
+  return value ? formatDate(value) : "No due date";
 }
 
 function groupTasksByProject(tasks: TeamTaskRow[]) {
@@ -57,6 +70,18 @@ function groupTasksByProject(tasks: TeamTaskRow[]) {
   return Array.from(groups.values());
 }
 
+function toTaskDetailData(task: TeamTaskRow, assignedTo: string) {
+  return {
+    title: task.task_title,
+    projectName: task.project_name,
+    assignedTo,
+    startDate: task.task_start_date ? formatDate(task.task_start_date) : "No date",
+    dueDate: formatOptionalDate(task.task_due_date),
+    priority: task.task_priority,
+    status: task.task_status
+  };
+}
+
 export default async function TeamPage() {
   await requireUser();
 
@@ -74,6 +99,8 @@ export default async function TeamPage() {
          projects.status AS project_status,
          tasks.id AS task_id,
          tasks.title AS task_title,
+         tasks.start_date AS task_start_date,
+         tasks.due_date AS task_due_date,
          tasks.priority AS task_priority,
          tasks.status AS task_status
        FROM users
@@ -83,7 +110,7 @@ export default async function TeamPage() {
          users.name NULLS LAST,
          users.email,
          CASE projects.status WHEN 'active' THEN 0 ELSE 1 END,
-         projects.ddl ASC,
+         tasks.due_date ASC NULLS LAST,
          projects.name,
          CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
@@ -116,12 +143,13 @@ export default async function TeamPage() {
             const memberTasks = tasksByUser.get(member.id) ?? [];
             const projectGroups = groupTasksByProject(memberTasks);
             const remainingCount = memberTasks.filter((task) => task.task_status !== "done").length;
+            const memberName = member.name || member.email;
 
             return (
               <details className="team-member-block" key={member.id} open={index === 0}>
                 <summary className="team-member-summary">
                   <span>
-                    <strong>{member.name || member.email}</strong>
+                    <strong>{memberName}</strong>
                     <small>{member.category || "Unassigned"} · {member.role}</small>
                   </span>
                   <span>{memberTasks.length} tasks / {remainingCount} remaining</span>
@@ -139,7 +167,10 @@ export default async function TeamPage() {
                         <div className="team-task-list">
                           {project.tasks.map((task) => (
                             <div className="team-task-row" key={task.task_id}>
-                              <span>{task.task_title}</span>
+                              <span>
+                                <TaskDetailModal task={toTaskDetailData(task, memberName)} />
+                              </span>
+                              <span>{formatOptionalDate(task.task_due_date)}</span>
                               <span className={`task-pill priority-${task.task_priority}`}>
                                 {formatLabel(task.task_priority)}
                               </span>

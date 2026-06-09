@@ -105,6 +105,21 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   assigned_to_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  start_date DATE,
+  due_date DATE,
+  priority TEXT NOT NULL DEFAULT 'medium',
+  status TEXT NOT NULL DEFAULT 'todo',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS subtasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  assigned_to_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  start_date DATE,
+  due_date DATE,
   priority TEXT NOT NULL DEFAULT 'medium',
   status TEXT NOT NULL DEFAULT 'todo',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -114,6 +129,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 UPDATE projects SET status = 'active' WHERE status NOT IN ('active', 'done');
 UPDATE tasks SET priority = 'medium' WHERE priority NOT IN ('low', 'medium', 'high');
 UPDATE tasks SET status = 'todo' WHERE status NOT IN ('todo', 'in_progress', 'done');
+UPDATE subtasks SET priority = 'medium' WHERE priority NOT IN ('low', 'medium', 'high');
+UPDATE subtasks SET status = 'todo' WHERE status NOT IN ('todo', 'in_progress', 'done');
 
 DO $$
 BEGIN
@@ -146,9 +163,43 @@ BEGIN
       ADD CONSTRAINT tasks_status_check
       CHECK (status IN ('todo', 'in_progress', 'done'));
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'subtasks_priority_check'
+  ) THEN
+    ALTER TABLE subtasks
+      ADD CONSTRAINT subtasks_priority_check
+      CHECK (priority IN ('low', 'medium', 'high'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'subtasks_status_check'
+  ) THEN
+    ALTER TABLE subtasks
+      ADD CONSTRAINT subtasks_status_check
+      CHECK (status IN ('todo', 'in_progress', 'done'));
+  END IF;
 END $$;
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to_id UUID REFERENCES users(id) ON DELETE RESTRICT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_date DATE;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE;
+
+UPDATE tasks
+SET start_date = projects.start_date
+FROM projects
+WHERE tasks.project_id = projects.id
+  AND tasks.start_date IS NULL;
+
+UPDATE tasks
+SET due_date = projects.ddl
+FROM projects
+WHERE tasks.project_id = projects.id
+  AND tasks.due_date IS NULL;
 
 WITH fallback_user AS (
   SELECT id FROM users ORDER BY created_at ASC LIMIT 1
@@ -193,6 +244,10 @@ CREATE INDEX IF NOT EXISTS user_registration_invites_user_id_idx ON user_registr
 CREATE INDEX IF NOT EXISTS projects_owner_id_idx ON projects(owner_id);
 CREATE INDEX IF NOT EXISTS tasks_project_id_idx ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS tasks_assigned_to_id_idx ON tasks(assigned_to_id);
+CREATE INDEX IF NOT EXISTS tasks_due_date_idx ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS subtasks_task_id_idx ON subtasks(task_id);
+CREATE INDEX IF NOT EXISTS subtasks_assigned_to_id_idx ON subtasks(assigned_to_id);
+CREATE INDEX IF NOT EXISTS subtasks_due_date_idx ON subtasks(due_date);
 CREATE INDEX IF NOT EXISTS two_factor_challenges_user_id_idx ON two_factor_challenges(user_id);
 CREATE INDEX IF NOT EXISTS two_factor_backup_codes_user_id_idx ON two_factor_backup_codes(user_id);
 CREATE INDEX IF NOT EXISTS two_factor_trusted_sessions_user_id_idx ON two_factor_trusted_sessions(user_id);
@@ -235,8 +290,8 @@ WHERE NOT EXISTS (SELECT 1 FROM projects WHERE projects.name = seed.name);
 
 UPDATE projects SET status = 'active' WHERE status NOT IN ('active', 'done');
 
-INSERT INTO tasks (project_id, title, assigned_to_id, priority, status)
-SELECT projects.id, seed.title, users.id, seed.priority, seed.status
+INSERT INTO tasks (project_id, title, assigned_to_id, start_date, due_date, priority, status)
+SELECT projects.id, seed.title, users.id, projects.start_date, projects.ddl, seed.priority, seed.status
 FROM (
   VALUES
     ('Website Refresh', 'Collect final homepage copy', 'mia.rodriguez@example.com', 'high', 'in_progress'),

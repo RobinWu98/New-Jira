@@ -1,5 +1,6 @@
 import { AppFrame } from "@/components/AppFrame";
 import { DashboardChart } from "@/components/DashboardChart";
+import { TaskDetailModal } from "@/components/ProjectForms";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -15,7 +16,10 @@ type TaskRow = {
   priority: "low" | "medium" | "high";
   status: "todo" | "in_progress" | "done";
   project_name: string;
-  ddl: Date | string;
+  assigned_to_name: string | null;
+  assigned_to_email: string;
+  start_date: Date | string | null;
+  due_date: Date | string | null;
 };
 
 const RANGE_LABELS: Record<WorkloadRange, string> = {
@@ -59,11 +63,27 @@ function formatDate(value: Date | string) {
   return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
 }
 
+function formatOptionalDate(value: Date | string | null) {
+  return value ? formatDate(value) : "No due date";
+}
+
 function formatLabel(value: string) {
   return value
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function toTaskDetailData(task: TaskRow) {
+  return {
+    title: task.title,
+    projectName: task.project_name,
+    assignedTo: task.assigned_to_name || task.assigned_to_email,
+    startDate: task.start_date ? formatDate(task.start_date) : "No date",
+    dueDate: formatOptionalDate(task.due_date),
+    priority: task.priority,
+    status: task.status
+  };
 }
 
 function getRangeWindow(range: WorkloadRange) {
@@ -93,8 +113,12 @@ function getSummary(tasks: TaskRow[]) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const overdue = tasks.filter((task) => {
-    const ddl = task.ddl instanceof Date ? task.ddl : new Date(`${task.ddl}T00:00:00`);
-    return task.status !== "done" && ddl < today;
+    if (!task.due_date) {
+      return false;
+    }
+
+    const dueDate = task.due_date instanceof Date ? task.due_date : new Date(`${task.due_date}T00:00:00`);
+    return task.status !== "done" && dueDate < today;
   }).length;
 
   return { total, done, inProgress, todo, remaining, highRemaining, overdue };
@@ -109,7 +133,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const values: unknown[] = [user.id];
   const windowClause =
     window.start && window.end
-      ? "AND projects.ddl >= $2::date AND projects.ddl < $3::date"
+      ? "AND tasks.due_date >= $2::date AND tasks.due_date < $3::date"
       : "";
 
   if (window.start && window.end) {
@@ -123,14 +147,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
        tasks.priority,
        tasks.status,
        projects.name AS project_name,
-       projects.ddl
+       users.name AS assigned_to_name,
+       users.email::text AS assigned_to_email,
+       tasks.start_date,
+       tasks.due_date
      FROM tasks
      JOIN projects ON projects.id = tasks.project_id
+     JOIN users ON users.id = tasks.assigned_to_id
      WHERE tasks.assigned_to_id = $1
        ${windowClause}
      ORDER BY
        CASE projects.status WHEN 'active' THEN 0 ELSE 1 END,
-       projects.ddl ASC,
+       tasks.due_date ASC NULLS LAST,
        CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
        CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
        tasks.created_at DESC`,
@@ -144,14 +172,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       ? "across all assigned projects"
       : `for ${RANGE_LABELS[range].toLowerCase()}`;
   const statusData = [
-    { name: "Todo", value: summary.todo, color: "#d7c0a6" },
-    { name: "In Progress", value: summary.inProgress, color: "#a9c46c" },
-    { name: "Done", value: summary.done, color: "#93b9d6" }
+    { name: "Todo", value: summary.todo, color: "#8590a2" },
+    { name: "In Progress", value: summary.inProgress, color: "#0c66e4" },
+    { name: "Done", value: summary.done, color: "#22a06b" }
   ];
   const priorityData = [
-    { name: "High", value: tasks.filter((task) => task.priority === "high").length, color: "#f2c5bd" },
-    { name: "Medium", value: tasks.filter((task) => task.priority === "medium").length, color: "#f6dea3" },
-    { name: "Low", value: tasks.filter((task) => task.priority === "low").length, color: "#d8e5f0" }
+    { name: "High", value: tasks.filter((task) => task.priority === "high").length, color: "#f15b50" },
+    { name: "Medium", value: tasks.filter((task) => task.priority === "medium").length, color: "#f5cd47" },
+    { name: "Low", value: tasks.filter((task) => task.priority === "low").length, color: "#579dff" }
   ];
 
   return (
@@ -225,9 +253,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </div>
             {tasks.map((task) => (
               <div className="tasks-table-row dashboard-task-row" role="row" key={task.id}>
-                <span role="cell">{task.title}</span>
+                <span role="cell">
+                  <TaskDetailModal task={toTaskDetailData(task)} />
+                </span>
                 <span role="cell">{task.project_name}</span>
-                <span role="cell">{formatDate(task.ddl)}</span>
+                <span role="cell">{formatOptionalDate(task.due_date)}</span>
                 <span role="cell">
                   <span className={`task-pill priority-${task.priority}`}>{formatLabel(task.priority)}</span>
                 </span>
