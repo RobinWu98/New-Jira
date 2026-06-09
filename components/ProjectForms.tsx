@@ -594,7 +594,13 @@ export function TaskWithSubtasks({
             {isOpen ? "v" : ">"}
           </button>
           <TaskDetailModal task={taskDetail} />
-          <span className="subtask-count">{subtasks.length}</span>
+          <CreateSubtaskModal
+            projectId={task.projectId}
+            taskId={task.id}
+            trigger="+"
+            triggerClassName="subtask-add-button"
+            users={users}
+          />
         </span>
         <span role="cell">{task.assignedTo}</span>
         <span role="cell">{task.startLabel}</span>
@@ -613,58 +619,40 @@ export function TaskWithSubtasks({
         ) : null}
       </div>
       {isOpen ? (
-        <div className="subtasks-panel" role="row">
-          <div className="subtasks-panel-header">
-            <strong>Sub-tasks</strong>
-            <CreateSubtaskModal
-              projectId={task.projectId}
-              taskId={task.id}
-              trigger="+"
-              triggerClassName="subtask-add-button"
-              users={users}
-            />
-          </div>
-          {subtasks.length ? (
-            <div className="subtasks-list">
-              {subtasks.map((subtask) => {
-                const subtaskDetail = {
-                  title: subtask.title,
-                  projectName: task.projectName,
-                  assignedTo: subtask.assignedTo,
-                  startDate: subtask.startLabel,
-                  dueDate: subtask.dueLabel,
-                  priority: subtask.priority,
-                  status: subtask.status
-                };
+        subtasks.map((subtask) => {
+          const subtaskDetail = {
+            title: subtask.title,
+            projectName: task.projectName,
+            assignedTo: subtask.assignedTo,
+            startDate: subtask.startLabel,
+            dueDate: subtask.dueLabel,
+            priority: subtask.priority,
+            status: subtask.status
+          };
 
-                return (
-                  <div className={`subtask-row${canModify ? "" : " subtask-row-readonly"}`} key={subtask.id}>
-                    <span className="subtask-title-cell">
-                      <TaskDetailModal task={subtaskDetail} />
-                    </span>
-                    <span>{subtask.assignedTo}</span>
-                    <span>{subtask.startLabel}</span>
-                    <span>{subtask.dueLabel}</span>
-                    <span>
-                      <span className={`task-pill priority-${subtask.priority}`}>{formatTaskLabel(subtask.priority)}</span>
-                    </span>
-                    <span>
-                      <span className={`task-pill task-status-${subtask.status}`}>{formatTaskLabel(subtask.status)}</span>
-                    </span>
-                    {canModify ? (
-                      <span className="table-actions">
-                        <EditSubtaskModal projectId={task.projectId} taskId={task.id} users={users} subtask={subtask} />
-                        <DeleteSubtaskForm projectId={task.projectId} taskId={task.id} subtaskId={subtask.id} />
-                      </span>
-                    ) : null}
-                  </div>
-                );
-              })}
+          return (
+            <div className={`subtask-row${canModify ? "" : " subtask-row-readonly"}`} key={subtask.id} role="row">
+              <span className="subtask-title-cell" role="cell">
+                <TaskDetailModal task={subtaskDetail} />
+              </span>
+              <span role="cell">{subtask.assignedTo}</span>
+              <span role="cell">{subtask.startLabel}</span>
+              <span role="cell">{subtask.dueLabel}</span>
+              <span role="cell">
+                <span className={`task-pill priority-${subtask.priority}`}>{formatTaskLabel(subtask.priority)}</span>
+              </span>
+              <span role="cell">
+                <span className={`task-pill task-status-${subtask.status}`}>{formatTaskLabel(subtask.status)}</span>
+              </span>
+              {canModify ? (
+                <span className="table-actions" role="cell">
+                  <EditSubtaskModal projectId={task.projectId} taskId={task.id} users={users} subtask={subtask} />
+                  <DeleteSubtaskForm projectId={task.projectId} taskId={task.id} subtaskId={subtask.id} />
+                </span>
+              ) : null}
             </div>
-          ) : (
-            <div className="subtasks-empty">No sub-tasks yet.</div>
-          )}
-        </div>
+          );
+        })
       ) : null}
     </>
   );

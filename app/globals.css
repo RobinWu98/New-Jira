@@ -1448,45 +1448,11 @@ a.button {
   color: #0c66e4;
 }
 
-.subtask-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  background: #f4f5f7;
-  color: #44546f;
-  padding: 0 7px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.subtasks-panel {
-  min-width: 1070px;
-  border-bottom: 2px solid var(--line);
-  background: #fbfcfe;
-  padding: 10px 12px 10px 46px;
-}
-
-.subtasks-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.subtasks-panel-header strong {
-  color: #44546f;
-  font-size: 12px;
-  text-transform: uppercase;
-}
-
 .subtask-add-button {
   display: inline-grid;
-  width: 30px;
-  height: 30px;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
   place-items: center;
   border: 1px solid transparent;
   border-radius: 3px;
@@ -1494,7 +1460,7 @@ a.button {
   color: #0c66e4;
   padding: 0;
   font: inherit;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
@@ -1504,35 +1470,32 @@ a.button {
   background: #e9f2ff;
 }
 
-.subtasks-list {
-  display: grid;
-  border: 1px solid var(--line);
-  background: #ffffff;
-}
-
 .subtask-row {
   display: grid;
   grid-template-columns:
-    minmax(220px, 1.5fr)
-    minmax(180px, 1fr)
-    minmax(100px, 0.55fr)
-    minmax(100px, 0.55fr)
-    minmax(100px, 0.5fr)
-    minmax(116px, 0.58fr)
-    minmax(160px, 0.9fr);
+    minmax(240px, 1.5fr)
+    minmax(190px, 1fr)
+    minmax(110px, 0.55fr)
+    minmax(110px, 0.55fr)
+    minmax(110px, 0.5fr)
+    minmax(126px, 0.58fr)
+    minmax(170px, 0.9fr);
   align-items: center;
+  min-width: 1070px;
   min-height: 38px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  background: #fbfcfe;
 }
 
 .subtask-row-readonly {
   grid-template-columns:
     minmax(220px, 1.6fr)
     minmax(180px, 1.1fr)
-    minmax(100px, 0.6fr)
-    minmax(100px, 0.6fr)
-    minmax(100px, 0.55fr)
-    minmax(116px, 0.65fr);
+    minmax(110px, 0.7fr)
+    minmax(110px, 0.7fr)
+    minmax(120px, 0.7fr)
+    minmax(140px, 0.8fr);
+  min-width: 880px;
 }
 
 .subtask-row:last-child {
@@ -1543,19 +1506,25 @@ a.button {
   min-width: 0;
   padding: 8px 10px;
   overflow-wrap: anywhere;
-  border-right: 1px solid var(--line);
+  border-right: 2px solid var(--line);
 }
 
 .subtask-row > span:last-child {
   border-right: 0;
 }
 
-.subtasks-empty {
-  border: 1px solid var(--line);
-  background: #ffffff;
-  color: #5e6c84;
-  padding: 10px;
-  font-weight: 600;
+.subtask-title-cell {
+  padding-left: 42px !important;
+  position: relative;
+}
+
+.subtask-title-cell::before {
+  content: "";
+  position: absolute;
+  left: 23px;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid #dfe1e6;
 }
 
 .task-detail-modal {
