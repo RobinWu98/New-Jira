@@ -1,6 +1,6 @@
 import { AppFrame } from "@/components/AppFrame";
 import { DashboardChart } from "@/components/DashboardChart";
-import { TaskDetailModal } from "@/components/ProjectForms";
+import { TaskDetailModal, type TaskCommentData, type UserOption } from "@/components/ProjectForms";
 import { ResizableTaskColumnHeader, ResizableTaskTable } from "@/components/ResizableTaskTable";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
@@ -13,6 +13,7 @@ type WorkloadRange = "week" | "month" | "all";
 
 type TaskRow = {
   id: string;
+  project_id: string;
   title: string;
   priority: "low" | "medium" | "high";
   status: "todo" | "in_progress" | "done";
@@ -21,6 +22,22 @@ type TaskRow = {
   assigned_to_email: string;
   start_date: Date | string | null;
   due_date: Date | string | null;
+};
+
+type CommentRow = {
+  id: string;
+  work_item_id: string;
+  author_name: string | null;
+  author_email: string | null;
+  body: string;
+  created_at: Date | string;
+};
+
+type UserRow = {
+  id: string;
+  name: string | null;
+  email: string;
+  created_at: Date | string;
 };
 
 const RANGE_LABELS: Record<WorkloadRange, string> = {
@@ -68,6 +85,17 @@ function formatOptionalDate(value: Date | string | null) {
   return value ? formatDate(value) : "No due date";
 }
 
+function formatDateTime(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
 function formatLabel(value: string) {
   return value
     .split("_")
@@ -75,15 +103,41 @@ function formatLabel(value: string) {
     .join(" ");
 }
 
-function toTaskDetailData(task: TaskRow) {
+function toCommentData(comment: CommentRow): TaskCommentData {
   return {
+    id: comment.id,
+    author: comment.author_name || comment.author_email || "Deleted user",
+    body: comment.body,
+    createdAt: formatDateTime(comment.created_at)
+  };
+}
+
+function groupComments(comments: CommentRow[]) {
+  const groups = new Map<string, TaskCommentData[]>();
+
+  for (const comment of comments) {
+    const existing = groups.get(comment.work_item_id) ?? [];
+    existing.push(toCommentData(comment));
+    groups.set(comment.work_item_id, existing);
+  }
+
+  return groups;
+}
+
+function toTaskDetailData(task: TaskRow, comments: TaskCommentData[], mentionUsers: UserOption[]) {
+  return {
+    id: task.id,
+    projectId: task.project_id,
+    type: "task" as const,
     title: task.title,
     projectName: task.project_name,
     assignedTo: task.assigned_to_name || task.assigned_to_email,
     startDate: task.start_date ? formatDate(task.start_date) : "No date",
     dueDate: formatOptionalDate(task.due_date),
     priority: task.priority,
-    status: task.status
+    status: task.status,
+    comments,
+    mentionUsers
   };
 }
 
@@ -141,32 +195,59 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     values.push(toDateInput(window.start), toDateInput(window.end));
   }
 
-  const tasksResult = await query<TaskRow>(
-    `SELECT
-       tasks.id,
-       tasks.title,
-       tasks.priority,
-       tasks.status,
-       projects.name AS project_name,
-       users.name AS assigned_to_name,
-       users.email::text AS assigned_to_email,
-       tasks.start_date,
-       tasks.due_date
-     FROM tasks
-     JOIN projects ON projects.id = tasks.project_id
-     JOIN users ON users.id = tasks.assigned_to_id
-     WHERE tasks.assigned_to_id = $1
-       ${windowClause}
-     ORDER BY
-       CASE projects.status WHEN 'active' THEN 0 ELSE 1 END,
-       tasks.due_date ASC NULLS LAST,
-       CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
-       CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
-       tasks.created_at DESC`,
-    values
-  );
+  const [tasksResult, usersResult] = await Promise.all([
+    query<TaskRow>(
+      `SELECT
+         tasks.id,
+         tasks.project_id,
+         tasks.title,
+         tasks.priority,
+         tasks.status,
+         projects.name AS project_name,
+         users.name AS assigned_to_name,
+         users.email::text AS assigned_to_email,
+         tasks.start_date,
+         tasks.due_date
+       FROM tasks
+       JOIN projects ON projects.id = tasks.project_id
+       JOIN users ON users.id = tasks.assigned_to_id
+       WHERE tasks.assigned_to_id = $1
+         ${windowClause}
+       ORDER BY
+         CASE projects.status WHEN 'active' THEN 0 ELSE 1 END,
+         tasks.due_date ASC NULLS LAST,
+         CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+         CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+         tasks.created_at DESC`,
+      values
+    ),
+    query<UserRow>("SELECT id, name, email::text AS email, created_at FROM users ORDER BY name NULLS LAST, email")
+  ]);
 
   const tasks = tasksResult.rows;
+  const mentionUsers = usersResult.rows.map((user) => ({
+    id: user.id,
+    label: user.name ? `${user.name} (${user.email})` : user.email,
+    createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at)
+  }));
+  const taskIds = tasks.map((task) => task.id);
+  const commentsResult = taskIds.length
+    ? await query<CommentRow>(
+        `SELECT
+           task_comments.id,
+           task_comments.task_id AS work_item_id,
+           users.name AS author_name,
+           users.email::text AS author_email,
+           task_comments.body,
+           task_comments.created_at
+         FROM task_comments
+         LEFT JOIN users ON users.id = task_comments.author_id
+         WHERE task_comments.task_id = ANY($1::uuid[])
+         ORDER BY task_comments.created_at ASC`,
+        [taskIds]
+      )
+    : { rows: [] };
+  const commentsByTask = groupComments(commentsResult.rows);
   const summary = getSummary(tasks);
   const rangeText =
     range === "all"
@@ -260,7 +341,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             {tasks.map((task) => (
               <div className="tasks-table-row dashboard-task-row" role="row" key={task.id}>
                 <span role="cell">
-                  <TaskDetailModal task={toTaskDetailData(task)} />
+                  <TaskDetailModal task={toTaskDetailData(task, commentsByTask.get(task.id) ?? [], mentionUsers)} />
                 </span>
                 <span role="cell">{task.project_name}</span>
                 <span role="cell">{formatOptionalDate(task.due_date)}</span>

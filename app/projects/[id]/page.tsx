@@ -4,6 +4,7 @@ import {
   CreateTaskModal,
   TaskWithSubtasks,
   type SubtaskListItemData,
+  type TaskCommentData,
   type TaskListItemData,
   type TaskFormData
 } from "@/components/ProjectForms";
@@ -31,6 +32,7 @@ type UserRow = {
   id: string;
   name: string | null;
   email: string;
+  created_at: Date | string;
 };
 
 type TaskRow = {
@@ -57,6 +59,15 @@ type SubtaskRow = {
   assigned_to_id: string;
   assigned_to_name: string | null;
   assigned_to_email: string;
+  created_at: Date | string;
+};
+
+type CommentRow = {
+  id: string;
+  work_item_id: string;
+  author_name: string | null;
+  author_email: string | null;
+  body: string;
   created_at: Date | string;
 };
 
@@ -95,6 +106,17 @@ function formatDate(value: Date | string) {
 
 function formatOptionalDate(value: Date | string | null) {
   return value ? formatDate(value) : "No date";
+}
+
+function formatDateTime(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function formatLabel(value: string) {
@@ -186,17 +208,27 @@ function toTaskFormData(projectId: string, task: TaskRow): TaskFormData {
   };
 }
 
-function toTaskListItemData(projectId: string, projectName: string, task: TaskRow): TaskListItemData {
+function toTaskListItemData(
+  projectId: string,
+  projectName: string,
+  task: TaskRow,
+  comments: TaskCommentData[]
+): TaskListItemData {
   return {
     ...toTaskFormData(projectId, task),
     assignedTo: task.assigned_to_name || task.assigned_to_email,
     startLabel: formatOptionalDate(task.start_date),
     dueLabel: task.due_date ? formatDate(task.due_date) : "No due date",
-    projectName
+    projectName,
+    comments
   };
 }
 
-function toSubtaskListItemData(projectId: string, subtask: SubtaskRow): SubtaskListItemData {
+function toSubtaskListItemData(
+  projectId: string,
+  subtask: SubtaskRow,
+  comments: TaskCommentData[]
+): SubtaskListItemData {
   return {
     id: subtask.id,
     projectId,
@@ -209,16 +241,42 @@ function toSubtaskListItemData(projectId: string, subtask: SubtaskRow): SubtaskL
     status: subtask.status,
     assignedTo: subtask.assigned_to_name || subtask.assigned_to_email,
     startLabel: formatOptionalDate(subtask.start_date),
-    dueLabel: subtask.due_date ? formatDate(subtask.due_date) : "No due date"
+    dueLabel: subtask.due_date ? formatDate(subtask.due_date) : "No due date",
+    comments
   };
 }
 
-function groupSubtasksByTask(subtasks: SubtaskRow[], projectId: string) {
+function toCommentData(comment: CommentRow): TaskCommentData {
+  return {
+    id: comment.id,
+    author: comment.author_name || comment.author_email || "Deleted user",
+    body: comment.body,
+    createdAt: formatDateTime(comment.created_at)
+  };
+}
+
+function groupComments(comments: CommentRow[]) {
+  const groups = new Map<string, TaskCommentData[]>();
+
+  for (const comment of comments) {
+    const existing = groups.get(comment.work_item_id) ?? [];
+    existing.push(toCommentData(comment));
+    groups.set(comment.work_item_id, existing);
+  }
+
+  return groups;
+}
+
+function groupSubtasksByTask(
+  subtasks: SubtaskRow[],
+  projectId: string,
+  subtaskCommentsById: Map<string, TaskCommentData[]>
+) {
   const groups = new Map<string, SubtaskListItemData[]>();
 
   for (const subtask of subtasks) {
     const existing = groups.get(subtask.task_id) ?? [];
-    existing.push(toSubtaskListItemData(projectId, subtask));
+    existing.push(toSubtaskListItemData(projectId, subtask, subtaskCommentsById.get(subtask.id) ?? []));
     groups.set(subtask.task_id, existing);
   }
 
@@ -247,7 +305,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     notFound();
   }
 
-  const [projectResult, tasksResult, subtasksResult, usersResult] = await Promise.all([
+  const [projectResult, tasksResult, subtasksResult, taskCommentsResult, subtaskCommentsResult, usersResult] =
+    await Promise.all([
     query<ProjectRow>(
       `SELECT
          projects.id,
@@ -310,8 +369,39 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
          subtasks.created_at DESC`,
       [id]
     ),
-    query<UserRow>("SELECT id, name, email::text AS email FROM users ORDER BY name NULLS LAST, email")
-  ]);
+      query<CommentRow>(
+        `SELECT
+           task_comments.id,
+           task_comments.task_id AS work_item_id,
+           users.name AS author_name,
+           users.email::text AS author_email,
+           task_comments.body,
+           task_comments.created_at
+         FROM task_comments
+         JOIN tasks ON tasks.id = task_comments.task_id
+         LEFT JOIN users ON users.id = task_comments.author_id
+         WHERE tasks.project_id = $1
+         ORDER BY task_comments.created_at ASC`,
+        [id]
+      ),
+      query<CommentRow>(
+        `SELECT
+           subtask_comments.id,
+           subtask_comments.subtask_id AS work_item_id,
+           users.name AS author_name,
+           users.email::text AS author_email,
+           subtask_comments.body,
+           subtask_comments.created_at
+         FROM subtask_comments
+         JOIN subtasks ON subtasks.id = subtask_comments.subtask_id
+         JOIN tasks ON tasks.id = subtasks.task_id
+         LEFT JOIN users ON users.id = subtask_comments.author_id
+         WHERE tasks.project_id = $1
+         ORDER BY subtask_comments.created_at ASC`,
+        [id]
+      ),
+      query<UserRow>("SELECT id, name, email::text AS email, created_at FROM users ORDER BY name NULLS LAST, email")
+    ]);
 
   const project = projectResult.rows[0];
 
@@ -321,11 +411,14 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
 
   const users = usersResult.rows.map((user) => ({
     id: user.id,
-    label: user.name ? `${user.name} (${user.email})` : user.email
+    label: user.name ? `${user.name} (${user.email})` : user.email,
+    createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at)
   }));
   const canModify = user.role === "admin";
   const selectedAssignee = selectedAssigneeId ? users.find((assignee) => assignee.id === selectedAssigneeId) : null;
-  const subtasksByTask = groupSubtasksByTask(subtasksResult.rows, project.id);
+  const taskCommentsById = groupComments(taskCommentsResult.rows);
+  const subtaskCommentsById = groupComments(subtaskCommentsResult.rows);
+  const subtasksByTask = groupSubtasksByTask(subtasksResult.rows, project.id, subtaskCommentsById);
   const baseFilteredTasks = tasksResult.rows
     .filter((task) => (selectedAssigneeId ? task.assigned_to_id === selectedAssigneeId : true))
     .filter((task) => (selectedPriority === "all" ? true : task.priority === selectedPriority))
@@ -533,7 +626,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               canModify={canModify}
               key={task.id}
               subtasks={subtasksByTask.get(task.id) ?? []}
-              task={toTaskListItemData(project.id, project.name, task)}
+              task={toTaskListItemData(project.id, project.name, task, taskCommentsById.get(task.id) ?? [])}
               users={users}
             />
           ))}

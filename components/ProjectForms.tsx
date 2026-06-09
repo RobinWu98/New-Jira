@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useId, useState, type ReactNode } from "react";
+import { useActionState, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   type AuthActionState,
   createProjectAction,
+  createSubtaskCommentAction,
   createSubtaskAction,
+  createTaskCommentAction,
   createTaskAction,
   deleteProjectAction,
   deleteSubtaskAction,
@@ -15,9 +17,10 @@ import {
 } from "@/lib/actions";
 import { SubmitButton } from "./FormStatus";
 
-type UserOption = {
+export type UserOption = {
   id: string;
   label: string;
+  createdAt?: string;
 };
 
 export type ProjectFormData = {
@@ -58,15 +61,21 @@ export type TaskListItemData = TaskFormData & {
   startLabel: string;
   dueLabel: string;
   projectName: string;
+  comments?: TaskCommentData[];
 };
 
 export type SubtaskListItemData = SubtaskFormData & {
   assignedTo: string;
   startLabel: string;
   dueLabel: string;
+  comments?: TaskCommentData[];
 };
 
 export type TaskDetailData = {
+  id: string;
+  projectId: string;
+  taskId?: string;
+  type: "task" | "subtask";
   title: string;
   projectName?: string;
   assignedTo: string;
@@ -74,6 +83,15 @@ export type TaskDetailData = {
   dueDate: string;
   priority: string;
   status: string;
+  comments?: TaskCommentData[];
+  mentionUsers?: UserOption[];
+};
+
+export type TaskCommentData = {
+  id: string;
+  author: string;
+  body: string;
+  createdAt: string;
 };
 
 const initialState: AuthActionState = {};
@@ -158,11 +176,198 @@ export function TaskDetailModal({ task }: { task: TaskDetailData }) {
             <span className={`task-pill task-status-${task.status}`}>{formatTaskLabel(task.status)}</span>
           </div>
         </div>
-        <div className="task-message-shell">
-          <textarea aria-label="Task messages" />
-        </div>
+        <TaskComments task={task} />
       </div>
     </Modal>
+  );
+}
+
+function TaskComments({ task }: { task: TaskDetailData }) {
+  const comments = task.comments ?? [];
+
+  return (
+    <div className="task-message-shell">
+      <div className="task-message-list" aria-label={`${task.title} messages`}>
+        {comments.length ? (
+          comments.map((comment) => (
+            <article className="task-message" key={comment.id}>
+              <div className="task-message-meta">
+                <strong>{comment.author}</strong>
+                <span>{comment.createdAt}</span>
+              </div>
+              <p>{comment.body}</p>
+            </article>
+          ))
+        ) : (
+          <div className="task-message-empty">No messages yet.</div>
+        )}
+      </div>
+      <TaskCommentForm task={task} />
+    </div>
+  );
+}
+
+function TaskCommentForm({ task }: { task: TaskDetailData }) {
+  const [state, action] = useActionState(
+    task.type === "task" ? createTaskCommentAction : createSubtaskCommentAction,
+    initialState
+  );
+  const commentId = `${task.type}-${task.id}-comment`;
+
+  return (
+    <form action={action} className="task-message-form">
+      <Feedback state={state} />
+      <input name="projectId" type="hidden" value={task.projectId} />
+      <input name="taskId" type="hidden" value={task.type === "task" ? task.id : task.taskId ?? ""} />
+      {task.type === "subtask" ? <input name="subtaskId" type="hidden" value={task.id} /> : null}
+      <label className="sr-only" htmlFor={commentId}>
+        Message
+      </label>
+      <MentionTextarea id={commentId} users={task.mentionUsers ?? []} />
+      <div className="button-row">
+        <SubmitButton>Send</SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+function getMentionToken(label: string) {
+  return label.includes(" (") ? label.split(" (")[0] : label;
+}
+
+function getActiveMention(value: string, cursor: number) {
+  const beforeCursor = value.slice(0, cursor);
+  const match = beforeCursor.match(/(?:^|\s)@([^\s@]*)$/);
+
+  if (!match || match.index === undefined) {
+    return null;
+  }
+
+  const atIndex = match.index + match[0].lastIndexOf("@");
+
+  return {
+    query: match[1].toLowerCase(),
+    start: atIndex,
+    end: cursor
+  };
+}
+
+function MentionTextarea({ id, users }: { id: string; users: UserOption[] }) {
+  const [value, setValue] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const activeMention = getActiveMention(value, cursor);
+  const suggestions = useMemo(() => {
+    if (!activeMention || !users.length) {
+      return [];
+    }
+
+    const query = activeMention.query;
+
+    return users
+      .filter((user) => user.label.toLowerCase().includes(query))
+      .sort((left, right) => {
+        if (!query) {
+          return left.label.localeCompare(right.label);
+        }
+
+        const leftLabel = left.label.toLowerCase();
+        const rightLabel = right.label.toLowerCase();
+        const leftToken = getMentionToken(left.label).toLowerCase();
+        const rightToken = getMentionToken(right.label).toLowerCase();
+        const leftPrefix = leftToken.startsWith(query) || leftLabel.startsWith(query) ? 0 : 1;
+        const rightPrefix = rightToken.startsWith(query) || rightLabel.startsWith(query) ? 0 : 1;
+
+        return leftPrefix - rightPrefix || leftLabel.localeCompare(rightLabel);
+      });
+  }, [activeMention, users]);
+  const showSuggestions = Boolean(activeMention && suggestions.length);
+
+  function updateCursor(element: HTMLTextAreaElement) {
+    setCursor(element.selectionStart);
+    setSelectedIndex(0);
+  }
+
+  function insertMention(user: UserOption) {
+    if (!activeMention) {
+      return;
+    }
+
+    const mention = `@${getMentionToken(user.label)} `;
+    const nextValue = `${value.slice(0, activeMention.start)}${mention}${value.slice(activeMention.end)}`;
+    const nextCursor = activeMention.start + mention.length;
+
+    setValue(nextValue);
+    setCursor(nextCursor);
+    setSelectedIndex(0);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
+  return (
+    <div className="mention-composer">
+      <textarea
+        id={id}
+        name="body"
+        placeholder="Write a message..."
+        ref={textareaRef}
+        rows={4}
+        value={value}
+        onBlur={(event) => updateCursor(event.currentTarget)}
+        onChange={(event) => {
+          setValue(event.currentTarget.value);
+          updateCursor(event.currentTarget);
+        }}
+        onClick={(event) => updateCursor(event.currentTarget)}
+        onKeyDown={(event) => {
+          if (!showSuggestions) {
+            return;
+          }
+
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setSelectedIndex((index) => (index + 1) % suggestions.length);
+          }
+
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setSelectedIndex((index) => (index - 1 + suggestions.length) % suggestions.length);
+          }
+
+          if (event.key === "Enter" || event.key === "Tab") {
+            event.preventDefault();
+            insertMention(suggestions[selectedIndex]);
+          }
+
+          if (event.key === "Escape") {
+            setCursor(-1);
+          }
+        }}
+        onKeyUp={(event) => updateCursor(event.currentTarget)}
+      />
+      {showSuggestions ? (
+        <div className="mention-menu" role="listbox">
+          {suggestions.map((user, index) => (
+            <button
+              className={index === selectedIndex ? "is-active" : ""}
+              key={user.id}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                insertMention(user);
+              }}
+              role="option"
+              type="button"
+            >
+              <span>@{getMentionToken(user.label)}</span>
+              <small>{user.label}</small>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -571,13 +776,18 @@ export function TaskWithSubtasks({
 }) {
   const [isOpen, setIsOpen] = useState(true);
   const taskDetail = {
+    id: task.id,
+    projectId: task.projectId,
+    type: "task" as const,
     title: task.title,
     projectName: task.projectName,
     assignedTo: task.assignedTo,
     startDate: task.startLabel,
     dueDate: task.dueLabel,
     priority: task.priority,
-    status: task.status
+    status: task.status,
+    comments: task.comments,
+    mentionUsers: users
   };
 
   return (
@@ -621,13 +831,19 @@ export function TaskWithSubtasks({
       {isOpen ? (
         subtasks.map((subtask) => {
           const subtaskDetail = {
+            id: subtask.id,
+            projectId: subtask.projectId,
+            taskId: subtask.taskId,
+            type: "subtask" as const,
             title: subtask.title,
             projectName: task.projectName,
             assignedTo: subtask.assignedTo,
             startDate: subtask.startLabel,
             dueDate: subtask.dueLabel,
             priority: subtask.priority,
-            status: subtask.status
+            status: subtask.status,
+            comments: subtask.comments,
+            mentionUsers: users
           };
 
           return (

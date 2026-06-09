@@ -1,4 +1,5 @@
 import { logoutAction } from "@/lib/actions";
+import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
 type ProjectNavRow = {
@@ -52,15 +53,24 @@ function ProjectNavGroup({
 }
 
 export async function AppFrame({ children, shellClassName = "", currentProjectId }: AppFrameProps) {
-  const result = await query<ProjectNavRow>(
-    `SELECT id, name, status
-     FROM projects
-     ORDER BY ddl ASC, created_at DESC`
-  );
+  const user = await getCurrentUser();
+  const [result, unreadResult] = await Promise.all([
+    query<ProjectNavRow>(
+      `SELECT id, name, status
+       FROM projects
+       ORDER BY ddl ASC, created_at DESC`
+    ),
+    user
+      ? query<{ count: string }>("SELECT COUNT(*)::text AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL", [
+          user.id
+        ])
+      : Promise.resolve({ rows: [{ count: "0" }] })
+  ]);
 
   const activeProjects = result.rows.filter((project) => normalizeProjectStatus(project.status) === "active");
   const doneProjects = result.rows.filter((project) => normalizeProjectStatus(project.status) === "done");
   const shellClass = ["shell", shellClassName].filter(Boolean).join(" ");
+  const unreadCount = Number(unreadResult.rows[0]?.count ?? 0);
 
   return (
     <main className="page app-frame">
@@ -82,6 +92,7 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
               <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
               <path d="M13.73 21a2 2 0 0 1-3.46 0" />
             </svg>
+            {unreadCount ? <span className="topbar-badge">{unreadCount > 9 ? "9+" : unreadCount}</span> : null}
           </a>
           <div className="topbar-profile-menu">
             <button className="topbar-icon-link" type="button" aria-label="Profile menu" title="Profile menu">

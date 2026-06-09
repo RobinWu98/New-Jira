@@ -1,5 +1,5 @@
 import { AppFrame } from "@/components/AppFrame";
-import { TaskDetailModal } from "@/components/ProjectForms";
+import { TaskDetailModal, type UserOption } from "@/components/ProjectForms";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -9,6 +9,7 @@ type TeamMemberRow = {
   email: string;
   category: string | null;
   role: string;
+  created_at: Date | string;
 };
 
 type TeamTaskRow = {
@@ -70,15 +71,20 @@ function groupTasksByProject(tasks: TeamTaskRow[]) {
   return Array.from(groups.values());
 }
 
-function toTaskDetailData(task: TeamTaskRow, assignedTo: string) {
+function toTaskDetailData(task: TeamTaskRow, assignedTo: string, mentionUsers: UserOption[]) {
   return {
+    id: task.task_id,
+    projectId: task.project_id,
+    type: "task" as const,
     title: task.task_title,
     projectName: task.project_name,
     assignedTo,
     startDate: task.task_start_date ? formatDate(task.task_start_date) : "No date",
     dueDate: formatOptionalDate(task.task_due_date),
     priority: task.task_priority,
-    status: task.task_status
+    status: task.task_status,
+    comments: [],
+    mentionUsers
   };
 }
 
@@ -87,7 +93,7 @@ export default async function TeamPage() {
 
   const [membersResult, tasksResult] = await Promise.all([
     query<TeamMemberRow>(
-      `SELECT id, name, email::text AS email, category, role
+      `SELECT id, name, email::text AS email, category, role, created_at
        FROM users
        ORDER BY name NULLS LAST, email`
     ),
@@ -119,6 +125,11 @@ export default async function TeamPage() {
   ]);
 
   const tasksByUser = new Map<string, TeamTaskRow[]>();
+  const mentionUsers = membersResult.rows.map((member) => ({
+    id: member.id,
+    label: member.name ? `${member.name} (${member.email})` : member.email,
+    createdAt: member.created_at instanceof Date ? member.created_at.toISOString() : String(member.created_at)
+  }));
 
   for (const task of tasksResult.rows) {
     const existingTasks = tasksByUser.get(task.user_id) ?? [];
@@ -168,7 +179,7 @@ export default async function TeamPage() {
                           {project.tasks.map((task) => (
                             <div className="team-task-row" key={task.task_id}>
                               <span>
-                                <TaskDetailModal task={toTaskDetailData(task, memberName)} />
+                                <TaskDetailModal task={toTaskDetailData(task, memberName, mentionUsers)} />
                               </span>
                               <span>{formatOptionalDate(task.task_due_date)}</span>
                               <span className={`task-pill priority-${task.task_priority}`}>

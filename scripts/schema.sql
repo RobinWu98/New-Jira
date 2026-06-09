@@ -126,6 +126,40 @@ CREATE TABLE IF NOT EXISTS subtasks (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS task_comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  author_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS subtask_comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  subtask_id UUID NOT NULL REFERENCES subtasks(id) ON DELETE CASCADE,
+  author_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  task_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
+  subtask_id UUID REFERENCES subtasks(id) ON DELETE CASCADE,
+  task_comment_id UUID REFERENCES task_comments(id) ON DELETE CASCADE,
+  subtask_comment_id UUID REFERENCES subtask_comments(id) ON DELETE CASCADE,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 UPDATE projects SET status = 'active' WHERE status NOT IN ('active', 'done');
 UPDATE tasks SET priority = 'medium' WHERE priority NOT IN ('low', 'medium', 'high');
 UPDATE tasks SET status = 'todo' WHERE status NOT IN ('todo', 'in_progress', 'done');
@@ -248,6 +282,10 @@ CREATE INDEX IF NOT EXISTS tasks_due_date_idx ON tasks(due_date);
 CREATE INDEX IF NOT EXISTS subtasks_task_id_idx ON subtasks(task_id);
 CREATE INDEX IF NOT EXISTS subtasks_assigned_to_id_idx ON subtasks(assigned_to_id);
 CREATE INDEX IF NOT EXISTS subtasks_due_date_idx ON subtasks(due_date);
+CREATE INDEX IF NOT EXISTS task_comments_task_id_idx ON task_comments(task_id);
+CREATE INDEX IF NOT EXISTS subtask_comments_subtask_id_idx ON subtask_comments(subtask_id);
+CREATE INDEX IF NOT EXISTS notifications_user_id_created_at_idx ON notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS notifications_user_id_read_at_idx ON notifications(user_id, read_at);
 CREATE INDEX IF NOT EXISTS two_factor_challenges_user_id_idx ON two_factor_challenges(user_id);
 CREATE INDEX IF NOT EXISTS two_factor_backup_codes_user_id_idx ON two_factor_backup_codes(user_id);
 CREATE INDEX IF NOT EXISTS two_factor_trusted_sessions_user_id_idx ON two_factor_trusted_sessions(user_id);

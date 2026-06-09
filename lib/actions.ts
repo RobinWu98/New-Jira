@@ -70,6 +70,95 @@ function normalizeTaskStatus(status: string) {
   return ["todo", "in_progress", "done"].includes(status) ? status : "todo";
 }
 
+function excerpt(value: string, maxLength = 140) {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+}
+
+async function getMentionedUserIds(body: string) {
+  const normalizedBody = body.toLowerCase();
+  const result = await query<{ id: string; name: string | null; email: string }>(
+    "SELECT id, name, email::text AS email FROM users"
+  );
+
+  return result.rows
+    .filter((user) => {
+      const emailMention = `@${user.email.toLowerCase()}`;
+      const nameMention = user.name ? `@${user.name.toLowerCase()}` : "";
+
+      return normalizedBody.includes(emailMention) || Boolean(nameMention && normalizedBody.includes(nameMention));
+    })
+    .map((user) => user.id);
+}
+
+async function createNotifications({
+  actorId,
+  body,
+  projectId,
+  recipients,
+  subtaskCommentId,
+  subtaskId,
+  taskCommentId,
+  taskId,
+  title,
+  type
+}: {
+  actorId: string;
+  body: string;
+  projectId: string;
+  recipients: string[];
+  subtaskCommentId?: string;
+  subtaskId?: string;
+  taskCommentId?: string;
+  taskId?: string;
+  title: string;
+  type: string;
+}) {
+  const uniqueRecipients = [...new Set(recipients)].filter((recipientId) => recipientId !== actorId);
+
+  if (!uniqueRecipients.length) {
+    return;
+  }
+
+  await query(
+    `INSERT INTO notifications (
+       user_id,
+       actor_id,
+       type,
+       title,
+       body,
+       project_id,
+       task_id,
+       subtask_id,
+       task_comment_id,
+       subtask_comment_id
+     )
+     SELECT
+       recipient_id,
+       $1,
+       $2,
+       $3,
+       $4,
+       $5,
+       $6,
+       $7,
+       $8,
+       $9
+     FROM unnest($10::uuid[]) AS recipient_id`,
+    [
+      actorId,
+      type,
+      title,
+      excerpt(body),
+      projectId,
+      taskId ?? null,
+      subtaskId ?? null,
+      taskCommentId ?? null,
+      subtaskCommentId ?? null,
+      uniqueRecipients
+    ]
+  );
+}
+
 export async function registerAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
   const name = asString(formData, "name");
   const email = asString(formData, "email").toLowerCase();
@@ -529,6 +618,143 @@ export async function deleteTaskAction(_: AuthActionState, formData: FormData): 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   return { message: "Task has been deleted." };
+}
+
+export async function createTaskCommentAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const user = await requireUser();
+  const projectId = asString(formData, "projectId");
+  const taskId = asString(formData, "taskId");
+  const body = asString(formData, "body");
+
+  if (!projectId || !taskId) {
+    return { error: "Task is missing." };
+  }
+
+  if (!body) {
+    return { error: "Write a message before sending." };
+  }
+
+  const taskResult = await query<{
+    id: string;
+    title: string;
+    assigned_to_id: string;
+    owner_id: string | null;
+  }>(
+    `SELECT tasks.id, tasks.title, tasks.assigned_to_id, projects.owner_id
+     FROM tasks
+     JOIN projects ON projects.id = tasks.project_id
+     WHERE tasks.id = $1 AND tasks.project_id = $2
+     LIMIT 1`,
+    [taskId, projectId]
+  );
+  const task = taskResult.rows[0];
+
+  if (!task) {
+    return { error: "Task was not found." };
+  }
+
+  const commentResult = await query<{ id: string }>(
+    "INSERT INTO task_comments (task_id, author_id, body) VALUES ($1, $2, $3) RETURNING id",
+    [taskId, user.id, body]
+  );
+  const mentionedUserIds = await getMentionedUserIds(body);
+
+  await createNotifications({
+    actorId: user.id,
+    body,
+    projectId,
+    recipients: [task.assigned_to_id, task.owner_id ?? "", ...mentionedUserIds].filter(Boolean),
+    taskCommentId: commentResult.rows[0].id,
+    taskId,
+    title: `${user.name ?? user.email} commented on ${task.title}`,
+    type: "comment_added"
+  });
+
+  revalidatePath("/notifications");
+  revalidatePath(`/projects/${projectId}`);
+  return { message: "Message sent." };
+}
+
+export async function createSubtaskCommentAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const user = await requireUser();
+  const projectId = asString(formData, "projectId");
+  const taskId = asString(formData, "taskId");
+  const subtaskId = asString(formData, "subtaskId");
+  const body = asString(formData, "body");
+
+  if (!projectId || !taskId || !subtaskId) {
+    return { error: "Sub-task is missing." };
+  }
+
+  if (!body) {
+    return { error: "Write a message before sending." };
+  }
+
+  const subtaskResult = await query<{
+    id: string;
+    title: string;
+    assigned_to_id: string;
+    owner_id: string | null;
+  }>(
+    `SELECT subtasks.id, subtasks.title, subtasks.assigned_to_id, projects.owner_id
+     FROM subtasks
+     JOIN tasks ON tasks.id = subtasks.task_id
+     JOIN projects ON projects.id = tasks.project_id
+     WHERE subtasks.id = $1 AND subtasks.task_id = $2 AND tasks.project_id = $3
+     LIMIT 1`,
+    [subtaskId, taskId, projectId]
+  );
+  const subtask = subtaskResult.rows[0];
+
+  if (!subtask) {
+    return { error: "Sub-task was not found." };
+  }
+
+  const commentResult = await query<{ id: string }>(
+    "INSERT INTO subtask_comments (subtask_id, author_id, body) VALUES ($1, $2, $3) RETURNING id",
+    [subtaskId, user.id, body]
+  );
+  const mentionedUserIds = await getMentionedUserIds(body);
+
+  await createNotifications({
+    actorId: user.id,
+    body,
+    projectId,
+    recipients: [subtask.assigned_to_id, subtask.owner_id ?? "", ...mentionedUserIds].filter(Boolean),
+    subtaskCommentId: commentResult.rows[0].id,
+    subtaskId,
+    taskId,
+    title: `${user.name ?? user.email} commented on ${subtask.title}`,
+    type: "comment_added"
+  });
+
+  revalidatePath("/notifications");
+  revalidatePath(`/projects/${projectId}`);
+  return { message: "Message sent." };
+}
+
+export async function markNotificationReadAction(formData: FormData) {
+  const user = await requireUser();
+  const notificationId = asString(formData, "notificationId");
+
+  if (!notificationId) {
+    return;
+  }
+
+  await query("UPDATE notifications SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND user_id = $2", [
+    notificationId,
+    user.id
+  ]);
+  revalidatePath("/notifications");
+}
+
+export async function markAllNotificationsReadAction() {
+  const user = await requireUser();
+
+  await query("UPDATE notifications SET read_at = COALESCE(read_at, now()) WHERE user_id = $1 AND read_at IS NULL", [
+    user.id
+  ]);
+  revalidatePath("/notifications");
 }
 
 export async function createUserAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {

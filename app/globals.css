@@ -95,6 +95,7 @@ textarea {
 }
 
 .topbar-icon-link {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -105,6 +106,25 @@ textarea {
   color: var(--ink);
   box-shadow: 3px 3px 0 var(--shadow-strong);
   text-decoration: none;
+}
+
+.topbar-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: #de350b;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0 5px;
 }
 
 .topbar-icon-link svg {
@@ -1591,6 +1611,110 @@ a.button {
 
 .task-message-shell textarea {
   display: block;
+}
+
+.task-message-list {
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.task-message {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.task-message-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.task-message-meta strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-message-meta span,
+.notification-meta {
+  color: #626f86;
+  font-size: 13px;
+}
+
+.task-message p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-message-empty {
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: #626f86;
+  padding: 12px;
+}
+
+.task-message-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mention-composer {
+  position: relative;
+}
+
+.mention-menu {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 8;
+  display: grid;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 14px 36px rgba(9, 30, 66, 0.18);
+}
+
+.mention-menu button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.mention-menu button:last-child {
+  border-bottom: 0;
+}
+
+.mention-menu button:hover,
+.mention-menu button.is-active {
+  background: #e9f2ff;
+}
+
+.mention-menu span {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.mention-menu small {
+  color: #626f86;
+  overflow-wrap: anywhere;
 }
 
 .priority-high {
@@ -3160,4 +3284,55 @@ select {
 .resizable-task-table .tasks-table-empty {
   width: 100%;
   min-width: 100%;
+}
+
+.notification-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.notification-item.is-unread {
+  border-left-color: #0c66e4;
+  background: #f7fbff;
+}
+
+.notification-content {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.notification-title {
+  color: var(--ink);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.notification-body {
+  color: #44546f;
+  overflow-wrap: anywhere;
+}
+
+.notification-item form {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .notification-item {
+    grid-template-columns: 1fr;
+  }
 }
