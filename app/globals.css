@@ -1098,6 +1098,83 @@ a.button {
   margin-bottom: 10px;
 }
 
+.table-title-toolbar {
+  align-items: flex-start;
+}
+
+.title-filter-disclosure {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.title-filter-disclosure summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  cursor: pointer;
+  list-style: none;
+}
+
+.title-filter-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.title-filter-disclosure summary::after {
+  content: ">";
+  color: #44546f;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.title-filter-disclosure[open] summary::after {
+  transform: rotate(90deg);
+}
+
+.title-filter-toggle {
+  color: #44546f;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.title-filter-chips {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.title-filter-chips span {
+  border-radius: 3px;
+  background: #e9f2ff;
+  color: #0c66e4;
+  padding: 3px 7px;
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.title-filter-bar {
+  display: grid;
+  grid-template-columns:
+    minmax(180px, 1.1fr)
+    minmax(170px, 1fr)
+    minmax(130px, 0.75fr)
+    minmax(150px, 0.8fr)
+    auto;
+  align-items: end;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
 .project-group h3 {
   margin: 0;
   font-size: 23px;
@@ -1470,61 +1547,12 @@ a.button {
   background: #e9f2ff;
 }
 
-.subtask-row {
-  display: grid;
-  grid-template-columns:
-    minmax(240px, 1.5fr)
-    minmax(190px, 1fr)
-    minmax(110px, 0.55fr)
-    minmax(110px, 0.55fr)
-    minmax(110px, 0.5fr)
-    minmax(126px, 0.58fr)
-    minmax(170px, 0.9fr);
-  align-items: center;
-  min-width: 1070px;
-  min-height: 38px;
-  border-bottom: 2px solid var(--line);
-  background: #fbfcfe;
-}
-
-.subtask-row-readonly {
-  grid-template-columns:
-    minmax(220px, 1.6fr)
-    minmax(180px, 1.1fr)
-    minmax(110px, 0.7fr)
-    minmax(110px, 0.7fr)
-    minmax(120px, 0.7fr)
-    minmax(140px, 0.8fr);
-  min-width: 880px;
-}
-
-.subtask-row:last-child {
-  border-bottom: 0;
-}
-
-.subtask-row > span {
-  min-width: 0;
-  padding: 8px 10px;
-  overflow-wrap: anywhere;
-  border-right: 2px solid var(--line);
-}
-
-.subtask-row > span:last-child {
-  border-right: 0;
+.subtask-table-row {
+  background: #ffffff;
 }
 
 .subtask-title-cell {
   padding-left: 42px !important;
-  position: relative;
-}
-
-.subtask-title-cell::before {
-  content: "";
-  position: absolute;
-  left: 23px;
-  top: 0;
-  bottom: 0;
-  border-left: 2px solid #dfe1e6;
 }
 
 .task-detail-modal {
@@ -2111,6 +2139,7 @@ a:focus {
   .project-filter-bar,
   .filter-bar,
   .task-filter-bar,
+  .title-filter-bar,
   .team-task-row {
     grid-template-columns: 1fr;
   }
@@ -2817,6 +2846,27 @@ select {
   background: #f7f8fa;
 }
 
+.tasks-table-row.task-detail-row:not(.subtask-table-row) {
+  background: #ffffff;
+}
+
+.subtask-table-row,
+.tasks-table-row.subtask-table-row {
+  background: #ffffff;
+}
+
+.tasks-table-row.subtask-table-row:hover {
+  background: #f7f8fa;
+}
+
+.subtask-title-cell .task-title-trigger {
+  color: #006644;
+}
+
+.subtask-title-cell .task-title-trigger:hover {
+  color: #00875a;
+}
+
 .task-title-trigger,
 .project-row-link {
   color: #0052cc;
@@ -2849,6 +2899,101 @@ select {
 
 .task-message-shell textarea {
   min-height: 140px;
+}
+
+.draggable-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  cursor: grab;
+  scrollbar-color: #b3b9c4 transparent;
+  scrollbar-width: thin;
+}
+
+.draggable-scroll.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.draggable-scroll > .project-list,
+.draggable-scroll > .tasks-table {
+  width: max-content;
+  min-width: 100%;
+  overflow: visible;
+}
+
+.button.danger {
+  border-color: #de350b;
+  background: #de350b;
+  color: #ffffff;
+}
+
+.button.danger:hover,
+.button.danger:focus-visible {
+  border-color: #bf2600;
+  background: #bf2600;
+  color: #ffffff;
+}
+
+.button.danger:focus-visible {
+  box-shadow: 0 0 0 3px rgba(222, 53, 11, 0.24);
+}
+
+.project-list-row,
+.tasks-table-row {
+  column-gap: 0;
+}
+
+.project-list-row {
+  grid-template-columns:
+    minmax(18ch, 1.7fr)
+    minmax(6ch, max-content)
+    minmax(8ch, max-content)
+    minmax(14ch, 1fr)
+    minmax(13ch, max-content);
+}
+
+.tasks-table-row.dashboard-task-row {
+  grid-template-columns:
+    minmax(18ch, 1.5fr)
+    minmax(14ch, 1fr)
+    minmax(8ch, max-content)
+    minmax(7ch, max-content)
+    minmax(7ch, max-content);
+}
+
+.tasks-table-row.task-detail-row {
+  grid-template-columns:
+    minmax(20ch, 1.7fr)
+    minmax(12ch, 1fr)
+    minmax(6ch, max-content)
+    minmax(8ch, max-content)
+    minmax(7ch, max-content)
+    minmax(7ch, max-content)
+    minmax(13ch, max-content);
+}
+
+.tasks-table-row.task-detail-row-readonly {
+  grid-template-columns:
+    minmax(20ch, 1.7fr)
+    minmax(12ch, 1fr)
+    minmax(6ch, max-content)
+    minmax(8ch, max-content)
+    minmax(7ch, max-content)
+    minmax(7ch, max-content);
+}
+
+.project-list-row > span:not(:first-child),
+.project-list-row > strong:not(:first-child),
+.tasks-table-row > span:not(:first-child),
+.tasks-table-row > strong:not(:first-child) {
+  white-space: nowrap;
+}
+
+.record-actions,
+.table-actions {
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .main-actions {
@@ -2891,4 +3036,128 @@ select {
   .task-detail-meta-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Spreadsheet-style task tables */
+.resizable-task-table {
+  --task-table-grid: 280px 200px 110px 120px 110px 126px 180px;
+  display: grid;
+  grid-auto-rows: auto;
+  width: max-content;
+  min-width: 100%;
+  overflow: visible;
+}
+
+.resizable-task-table .tasks-table-row,
+.resizable-task-table .tasks-table-row.dashboard-task-row,
+.resizable-task-table .tasks-table-row.task-detail-row,
+.resizable-task-table .tasks-table-row.task-detail-row-readonly {
+  display: grid;
+  grid-template-columns: var(--task-table-grid);
+  min-width: 0;
+  width: max-content;
+  min-height: 38px;
+  column-gap: 0;
+  align-items: stretch;
+}
+
+.resizable-task-table .tasks-table-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.resizable-task-table .tasks-table-row > span,
+.resizable-task-table .tasks-table-row > strong {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 10px;
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.resizable-task-table .tasks-table-row > span:last-child,
+.resizable-task-table .tasks-table-row > strong:last-child {
+  border-right: 0;
+}
+
+.resizable-task-table .tasks-table-row > span:first-child,
+.resizable-task-table .tasks-table-row > strong:first-child {
+  overflow-wrap: normal;
+}
+
+.resizable-task-table .task-title-cell,
+.resizable-task-table .subtask-title-cell {
+  gap: 6px;
+}
+
+.resizable-task-table .task-title-trigger,
+.resizable-task-table .project-row-link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resizable-task-table .task-pill {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resizable-task-column-header {
+  position: relative;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.resizable-task-column-header > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  z-index: 3;
+  width: 10px;
+  min-height: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  padding: 0;
+}
+
+.task-column-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 4px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.task-column-resize-handle:hover::after,
+.task-column-resize-handle:focus-visible::after {
+  background: #0c66e4;
+}
+
+.task-column-resize-handle:focus-visible {
+  outline: 2px solid #85b8ff;
+  outline-offset: -2px;
+}
+
+.resizable-task-table .tasks-table-empty {
+  width: 100%;
+  min-width: 100%;
 }

@@ -1,6 +1,7 @@
 import { AppFrame } from "@/components/AppFrame";
 import { DashboardChart } from "@/components/DashboardChart";
 import { TaskDetailModal } from "@/components/ProjectForms";
+import { ResizableTaskColumnHeader, ResizableTaskTable } from "@/components/ResizableTaskTable";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -243,13 +244,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <h2>Assigned Tasks</h2>
         </div>
         {tasks.length ? (
-          <div className="tasks-table" role="table" aria-label="Assigned tasks">
+          <ResizableTaskTable
+            ariaLabel="Assigned tasks"
+            className="dashboard-task-table"
+            defaultWidths={[280, 210, 130, 120, 130]}
+            storageKey="dashboard-task-table-widths"
+          >
             <div className="tasks-table-row dashboard-task-row tasks-table-head" role="row">
-              <strong role="columnheader">Task</strong>
-              <strong role="columnheader">Project</strong>
-              <strong role="columnheader">Due Date</strong>
-              <strong role="columnheader">Priority</strong>
-              <strong role="columnheader">Status</strong>
+              <ResizableTaskColumnHeader index={0}>Task</ResizableTaskColumnHeader>
+              <ResizableTaskColumnHeader index={1}>Project</ResizableTaskColumnHeader>
+              <ResizableTaskColumnHeader index={2}>Due Date</ResizableTaskColumnHeader>
+              <ResizableTaskColumnHeader index={3}>Priority</ResizableTaskColumnHeader>
+              <ResizableTaskColumnHeader index={4}>Status</ResizableTaskColumnHeader>
             </div>
             {tasks.map((task) => (
               <div className="tasks-table-row dashboard-task-row" role="row" key={task.id}>
@@ -266,7 +272,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 </span>
               </div>
             ))}
-          </div>
+          </ResizableTaskTable>
         ) : (
           <div className="notice">No assigned tasks in this range.</div>
         )}

@@ -287,7 +287,7 @@ export function DeleteProjectForm({ projectId }: { projectId: string }) {
     <form action={action}>
       <Feedback state={state} />
       <input name="projectId" type="hidden" value={projectId} />
-      <button className="button secondary" type="submit">
+      <button className="button danger" type="submit">
         Delete
       </button>
     </form>
@@ -536,7 +536,7 @@ export function DeleteSubtaskForm({ projectId, taskId, subtaskId }: { projectId:
       <input name="projectId" type="hidden" value={projectId} />
       <input name="taskId" type="hidden" value={taskId} />
       <input name="subtaskId" type="hidden" value={subtaskId} />
-      <button className="button secondary" type="submit">
+      <button className="button danger" type="submit">
         Delete
       </button>
     </form>
@@ -551,7 +551,7 @@ export function DeleteTaskForm({ projectId, taskId }: { projectId: string; taskI
       <Feedback state={state} />
       <input name="projectId" type="hidden" value={projectId} />
       <input name="taskId" type="hidden" value={taskId} />
-      <button className="button secondary" type="submit">
+      <button className="button danger" type="submit">
         Delete
       </button>
     </form>
@@ -569,7 +569,7 @@ export function TaskWithSubtasks({
   users: UserOption[];
   canModify: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   const taskDetail = {
     title: task.title,
     projectName: task.projectName,
@@ -631,7 +631,11 @@ export function TaskWithSubtasks({
           };
 
           return (
-            <div className={`subtask-row${canModify ? "" : " subtask-row-readonly"}`} key={subtask.id} role="row">
+            <div
+              className={`tasks-table-row task-detail-row subtask-table-row${canModify ? "" : " task-detail-row-readonly"}`}
+              key={subtask.id}
+              role="row"
+            >
               <span className="subtask-title-cell" role="cell">
                 <TaskDetailModal task={subtaskDetail} />
               </span>

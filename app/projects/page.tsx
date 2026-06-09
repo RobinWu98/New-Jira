@@ -1,4 +1,5 @@
 import { AppFrame } from "@/components/AppFrame";
+import { DraggableScroll } from "@/components/DraggableScroll";
 import {
   CreateProjectModal,
   DeleteProjectForm,
@@ -142,44 +143,46 @@ function ProjectTable({
           {viewSwitch}
         </div>
       </div>
-      <div className={`project-list project-list-${status}`} role="table" aria-label={title}>
-        <div className="project-list-row project-list-head" role="row">
-          <strong role="columnheader">Project</strong>
-          <strong role="columnheader">Start</strong>
-          <strong role="columnheader">Due Date</strong>
-          <strong role="columnheader">Creator</strong>
-          <strong role="columnheader">Actions</strong>
-        </div>
-        {projects.map((project) => (
-          <div className="project-list-row" role="row" key={project.id}>
-            <span role="cell">
-              <a className="project-row-link" href={`/projects/${project.id}`}>
-                {project.name}
-              </a>
-            </span>
-            <span role="cell">{formatDate(project.start_date)}</span>
-            <span role="cell">{formatDate(project.ddl)}</span>
-            <span role="cell">{project.owner_name || project.owner_email || "Unassigned"}</span>
-            <span role="cell" className="record-actions">
-              {canModify ? (
-                <>
-                  <EditProjectModal users={users} currentUserId={currentUserId} project={toProjectFormData(project)} />
-                  <DeleteProjectForm projectId={project.id} />
-                </>
-              ) : (
-                <a className="button secondary" href={`/projects/${project.id}`}>
-                  View
+      <DraggableScroll>
+        <div className={`project-list project-list-${status}`} role="table" aria-label={title}>
+          <div className="project-list-row project-list-head" role="row">
+            <strong role="columnheader">Project</strong>
+            <strong role="columnheader">Start</strong>
+            <strong role="columnheader">Due Date</strong>
+            <strong role="columnheader">Creator</strong>
+            <strong role="columnheader">Actions</strong>
+          </div>
+          {projects.map((project) => (
+            <div className="project-list-row" role="row" key={project.id}>
+              <span role="cell">
+                <a className="project-row-link" href={`/projects/${project.id}`}>
+                  {project.name}
                 </a>
-              )}
-            </span>
-          </div>
-        ))}
-        {projects.length === 0 ? (
-          <div className="project-list-empty" role="row">
-            No {PROJECT_STATUS_LABELS[status].toLowerCase()} projects match this view.
-          </div>
-        ) : null}
-      </div>
+              </span>
+              <span role="cell">{formatDate(project.start_date)}</span>
+              <span role="cell">{formatDate(project.ddl)}</span>
+              <span role="cell">{project.owner_name || project.owner_email || "Unassigned"}</span>
+              <span role="cell" className="record-actions">
+                {canModify ? (
+                  <>
+                    <EditProjectModal users={users} currentUserId={currentUserId} project={toProjectFormData(project)} />
+                    <DeleteProjectForm projectId={project.id} />
+                  </>
+                ) : (
+                  <a className="button secondary" href={`/projects/${project.id}`}>
+                    View
+                  </a>
+                )}
+              </span>
+            </div>
+          ))}
+          {projects.length === 0 ? (
+            <div className="project-list-empty" role="row">
+              No {PROJECT_STATUS_LABELS[status].toLowerCase()} projects match this view.
+            </div>
+          ) : null}
+        </div>
+      </DraggableScroll>
     </div>
   );
 }

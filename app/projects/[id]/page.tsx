@@ -7,6 +7,7 @@ import {
   type TaskListItemData,
   type TaskFormData
 } from "@/components/ProjectForms";
+import { ResizableTaskColumnHeader, ResizableTaskTable } from "@/components/ResizableTaskTable";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -77,7 +78,7 @@ const TASK_STATUS_LABELS: Record<TaskStatusFilter, string> = {
 };
 
 const TASK_SORT_LABELS: Record<TaskSort, string> = {
-  default: "Due Date + Priority",
+  default: "Priority + Due Date",
   due_date: "Due Date",
   priority: "Priority",
   status: "Status",
@@ -323,6 +324,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     label: user.name ? `${user.name} (${user.email})` : user.email
   }));
   const canModify = user.role === "admin";
+  const selectedAssignee = selectedAssigneeId ? users.find((assignee) => assignee.id === selectedAssigneeId) : null;
   const subtasksByTask = groupSubtasksByTask(subtasksResult.rows, project.id);
   const baseFilteredTasks = tasksResult.rows
     .filter((task) => (selectedAssigneeId ? task.assigned_to_id === selectedAssigneeId : true))
@@ -370,12 +372,18 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       }
 
       return (
+        getPriorityRank(left.priority) - getPriorityRank(right.priority) ||
         getNullableDateTime(left.due_date) - getNullableDateTime(right.due_date) ||
         getStatusRank(left.status) - getStatusRank(right.status) ||
-        getPriorityRank(left.priority) - getPriorityRank(right.priority) ||
         getDateTime(right.created_at) - getDateTime(left.created_at)
       );
     });
+  const activeFilterLabels = [
+    queryText ? `Search: ${queryText}` : null,
+    selectedAssignee ? `Assignee: ${selectedAssignee.label}` : null,
+    selectedPriority !== "all" ? `Priority: ${TASK_PRIORITY_LABELS[selectedPriority]}` : null,
+    selectedTaskSort !== "default" ? `Sort: ${TASK_SORT_LABELS[selectedTaskSort]}` : null
+  ].filter((label): label is string => Boolean(label));
 
   return (
     <AppFrame shellClassName="project-shell" currentProjectId={project.id}>
@@ -413,27 +421,72 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         </div>
       </section>
       <section className="panel">
-        <div className="project-group-toolbar">
-          <h2>
-            <span className={`project-keyword task-view-keyword task-view-keyword-${selectedTaskStatus}`}>
-              {TASK_STATUS_LABELS[selectedTaskStatus]} Tasks
-            </span>
-          </h2>
+        <div className="project-group-toolbar table-title-toolbar">
+          <details className="title-filter-disclosure" open={activeFilterLabels.length > 0}>
+            <summary>
+              <span className={`project-keyword task-view-keyword task-view-keyword-${selectedTaskStatus}`}>
+                {TASK_STATUS_LABELS[selectedTaskStatus]} Tasks
+              </span>
+              <span className="title-filter-toggle">Filters</span>
+              {activeFilterLabels.length ? (
+                <span className="title-filter-chips">
+                  {activeFilterLabels.map((label) => (
+                    <span key={label}>{label}</span>
+                  ))}
+                </span>
+              ) : null}
+            </summary>
+            <form className="title-filter-bar task-filter-bar" action={`/projects/${project.id}`}>
+              <input name="taskStatus" type="hidden" value={selectedTaskStatus} />
+              <div className="filter-field">
+                <label htmlFor="task-search">Search</label>
+                <input id="task-search" name="q" type="search" defaultValue={queryText} placeholder="Search tasks" />
+              </div>
+              <div className="filter-field">
+                <label htmlFor="task-assignee">Assignee</label>
+                <select id="task-assignee" name="assignee" defaultValue={selectedAssigneeId}>
+                  <option value="">Everyone</option>
+                  {users.map((assignee) => (
+                    <option value={assignee.id} key={assignee.id}>
+                      {assignee.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter-field">
+                <label htmlFor="task-priority">Priority</label>
+                <select id="task-priority" name="priority" defaultValue={selectedPriority}>
+                  {(Object.keys(TASK_PRIORITY_LABELS) as TaskPriorityFilter[]).map((priority) => (
+                    <option value={priority} key={priority}>
+                      {TASK_PRIORITY_LABELS[priority]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter-field">
+                <label htmlFor="task-sort">Sort</label>
+                <select id="task-sort" name="sort" defaultValue={selectedTaskSort}>
+                  {(Object.keys(TASK_SORT_LABELS) as TaskSort[]).map((sort) => (
+                    <option value={sort} key={sort}>
+                      {TASK_SORT_LABELS[sort]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter-actions">
+                <button className="button" type="submit">
+                  Apply
+                </button>
+                <a className="button secondary" href={`/projects/${project.id}`}>
+                  Reset
+                </a>
+              </div>
+            </form>
+          </details>
           <div className="toolbar-actions">
             <span className="result-count">
               {filteredTasks.length} of {tasksResult.rows.length}
             </span>
-            <form className="table-title-search" action={`/projects/${project.id}`}>
-              <input name="taskStatus" type="hidden" value={selectedTaskStatus} />
-              {selectedAssigneeId ? <input name="assignee" type="hidden" value={selectedAssigneeId} /> : null}
-              {selectedPriority !== "all" ? <input name="priority" type="hidden" value={selectedPriority} /> : null}
-              {selectedTaskSort !== "default" ? <input name="sort" type="hidden" value={selectedTaskSort} /> : null}
-              <label className="sr-only" htmlFor="task-search">Search tasks</label>
-              <input id="task-search" name="q" type="search" defaultValue={queryText} placeholder="Search tasks" />
-              <button className="button secondary" type="submit">
-                Search
-              </button>
-            </form>
             <nav className="table-view-switch" aria-label="Task table view">
               <button className="button secondary table-view-trigger" type="button" aria-haspopup="true">
                 Table View: {TASK_STATUS_LABELS[selectedTaskStatus]} ({taskGroups[selectedTaskStatus].length})
@@ -460,58 +513,20 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             </nav>
           </div>
         </div>
-        <form className="filter-bar task-filter-bar" action={`/projects/${project.id}`}>
-          <input name="taskStatus" type="hidden" value={selectedTaskStatus} />
-          {queryText ? <input name="q" type="hidden" value={queryText} /> : null}
-          <div className="filter-field">
-            <label htmlFor="task-assignee">Assignee</label>
-            <select id="task-assignee" name="assignee" defaultValue={selectedAssigneeId}>
-              <option value="">Everyone</option>
-              {users.map((assignee) => (
-                <option value={assignee.id} key={assignee.id}>
-                  {assignee.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label htmlFor="task-priority">Priority</label>
-            <select id="task-priority" name="priority" defaultValue={selectedPriority}>
-              {(Object.keys(TASK_PRIORITY_LABELS) as TaskPriorityFilter[]).map((priority) => (
-                <option value={priority} key={priority}>
-                  {TASK_PRIORITY_LABELS[priority]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label htmlFor="task-sort">Sort</label>
-            <select id="task-sort" name="sort" defaultValue={selectedTaskSort}>
-              {(Object.keys(TASK_SORT_LABELS) as TaskSort[]).map((sort) => (
-                <option value={sort} key={sort}>
-                  {TASK_SORT_LABELS[sort]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-actions">
-            <button className="button" type="submit">
-              Apply
-            </button>
-            <a className="button secondary" href={`/projects/${project.id}`}>
-              Reset
-            </a>
-          </div>
-        </form>
-        <div className="tasks-table" role="table" aria-label={`${project.name} tasks`}>
+        <ResizableTaskTable
+          ariaLabel={`${project.name} tasks`}
+          className="project-task-table"
+          defaultWidths={canModify ? [280, 200, 110, 120, 110, 126, 180] : [280, 200, 110, 120, 110, 126]}
+          storageKey={`project-task-table-widths-${canModify ? "editable" : "readonly"}`}
+        >
           <div className={`tasks-table-row tasks-table-head task-detail-row${canModify ? "" : " task-detail-row-readonly"}`} role="row">
-            <strong role="columnheader">Task</strong>
-            <strong role="columnheader">Assigned To</strong>
-            <strong role="columnheader">Start</strong>
-            <strong role="columnheader">Due Date</strong>
-            <strong role="columnheader">Priority</strong>
-            <strong role="columnheader">Status</strong>
-            {canModify ? <strong role="columnheader">Actions</strong> : null}
+            <ResizableTaskColumnHeader index={0}>Task</ResizableTaskColumnHeader>
+            <ResizableTaskColumnHeader index={1}>Assigned To</ResizableTaskColumnHeader>
+            <ResizableTaskColumnHeader index={2}>Start</ResizableTaskColumnHeader>
+            <ResizableTaskColumnHeader index={3}>Due Date</ResizableTaskColumnHeader>
+            <ResizableTaskColumnHeader index={4}>Priority</ResizableTaskColumnHeader>
+            <ResizableTaskColumnHeader index={5}>Status</ResizableTaskColumnHeader>
+            {canModify ? <ResizableTaskColumnHeader index={6}>Actions</ResizableTaskColumnHeader> : null}
           </div>
           {filteredTasks.map((task) => (
             <TaskWithSubtasks
@@ -527,7 +542,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               No tasks match these filters.
             </div>
           ) : null}
-        </div>
+        </ResizableTaskTable>
       </section>
     </AppFrame>
   );
