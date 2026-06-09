@@ -130,7 +130,7 @@ function ProjectForm({
           />
         </div>
         <div className="form-row">
-          <label htmlFor={`${project?.id ?? "new"}-project-ddl`}>DDL</label>
+          <label htmlFor={`${project?.id ?? "new"}-project-ddl`}>Due Date</label>
           <input
             id={`${project?.id ?? "new"}-project-ddl`}
             name="ddl"

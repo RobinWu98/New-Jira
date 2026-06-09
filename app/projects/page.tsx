@@ -42,8 +42,8 @@ const PROJECT_STATUS_LABELS: Record<ProjectStatusFilter, string> = {
 };
 
 const PROJECT_SORT_LABELS: Record<ProjectSort, string> = {
-  ddl_asc: "DDL Soonest",
-  ddl_desc: "DDL Latest",
+  ddl_asc: "Due Date Soonest",
+  ddl_desc: "Due Date Latest",
   name_asc: "Name A-Z",
   newest: "Newest",
   tasks_desc: "Most Tasks"
@@ -70,7 +70,7 @@ function toDateInput(value: Date | string) {
 function formatDate(value: Date | string) {
   const date = value instanceof Date ? value : new Date(`${value}T00:00:00`);
 
-  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+  return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
 }
 
 function normalizeProjectStatus(status: string) {
@@ -141,7 +141,7 @@ function ProjectTable({
         <div className="project-list-row project-list-head" role="row">
           <strong role="columnheader">Project</strong>
           <strong role="columnheader">Start</strong>
-          <strong role="columnheader">DDL</strong>
+          <strong role="columnheader">Due Date</strong>
           <strong role="columnheader">Creator</strong>
           <strong role="columnheader">Actions</strong>
         </div>

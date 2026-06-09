@@ -71,7 +71,7 @@ const TASK_SORT_LABELS: Record<TaskSort, string> = {
 function formatDate(value: Date | string) {
   const date = value instanceof Date ? value : new Date(`${value}T00:00:00`);
 
-  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+  return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
 }
 
 function formatLabel(value: string) {
@@ -286,7 +286,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             <span>{formatDate(project.start_date)}</span>
           </div>
           <div>
-            <strong>DDL</strong>
+            <strong>Due Date</strong>
             <span>{formatDate(project.ddl)}</span>
           </div>
           <div>

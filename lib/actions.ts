@@ -182,11 +182,11 @@ export async function createProjectAction(_: AuthActionState, formData: FormData
   }
 
   if (!startDate || !ddl) {
-    return { error: "Please choose a start date and DDL." };
+    return { error: "Please choose a start date and due date." };
   }
 
   if (ddl < startDate) {
-    return { error: "DDL cannot be earlier than the start date." };
+    return { error: "Due date cannot be earlier than the start date." };
   }
 
   const ownerResult = await query<{ id: string }>("SELECT id FROM users WHERE id = $1 LIMIT 1", [ownerId]);
@@ -224,11 +224,11 @@ export async function updateProjectAction(_: AuthActionState, formData: FormData
   }
 
   if (!startDate || !ddl) {
-    return { error: "Please choose a start date and DDL." };
+    return { error: "Please choose a start date and due date." };
   }
 
   if (ddl < startDate) {
-    return { error: "DDL cannot be earlier than the start date." };
+    return { error: "Due date cannot be earlier than the start date." };
   }
 
   const ownerResult = await query<{ id: string }>("SELECT id FROM users WHERE id = $1 LIMIT 1", [ownerId]);

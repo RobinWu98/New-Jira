@@ -25,7 +25,7 @@ const RANGE_LABELS: Record<WorkloadRange, string> = {
 };
 
 function normalizeRange(value: string | undefined): WorkloadRange {
-  return value === "month" || value === "all" ? value : "week";
+  return value === "week" || value === "month" ? value : "all";
 }
 
 function startOfWeek(date: Date) {
@@ -56,7 +56,7 @@ function toDateInput(value: Date) {
 function formatDate(value: Date | string) {
   const date = value instanceof Date ? value : new Date(`${value}T00:00:00`);
 
-  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+  return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
 }
 
 function formatLabel(value: string) {
@@ -144,9 +144,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       ? "across all assigned projects"
       : `for ${RANGE_LABELS[range].toLowerCase()}`;
   const statusData = [
-    { name: "Todo", value: summary.todo, color: "#f1e7d9" },
-    { name: "In Progress", value: summary.inProgress, color: "#dce9c6" },
-    { name: "Done", value: summary.done, color: "#d8e5f0" }
+    { name: "Todo", value: summary.todo, color: "#d7c0a6" },
+    { name: "In Progress", value: summary.inProgress, color: "#a9c46c" },
+    { name: "Done", value: summary.done, color: "#93b9d6" }
   ];
   const priorityData = [
     { name: "High", value: tasks.filter((task) => task.priority === "high").length, color: "#f2c5bd" },
@@ -164,7 +164,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <div className="section-toolbar">
           <h2>Workload Summary</h2>
           <nav className="segmented-nav" aria-label="Dashboard range">
-            {(["week", "month", "all"] as WorkloadRange[]).map((option) => (
+            {(["all", "month", "week"] as WorkloadRange[]).map((option) => (
               <a
                 className={`button secondary${range === option ? " is-active" : ""}`}
                 href={`/dashboard?range=${option}`}
@@ -213,16 +213,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <section className="panel">
         <div className="section-toolbar">
           <h2>Assigned Tasks</h2>
-          <a className="button secondary" href="/main-page">
-            Back
-          </a>
         </div>
         {tasks.length ? (
           <div className="tasks-table" role="table" aria-label="Assigned tasks">
             <div className="tasks-table-row dashboard-task-row tasks-table-head" role="row">
               <strong role="columnheader">Task</strong>
               <strong role="columnheader">Project</strong>
-              <strong role="columnheader">DDL</strong>
+              <strong role="columnheader">Due Date</strong>
               <strong role="columnheader">Priority</strong>
               <strong role="columnheader">Status</strong>
             </div>
