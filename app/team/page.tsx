@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { TaskDetailModal, type TaskLogData, type UserOption } from "@/components/ProjectForms";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { syncOverdueWorkItems } from "@/lib/overdue";
 
 type TeamMemberRow = {
   id: string;
@@ -65,19 +66,15 @@ function formatDateTime(value: Date | string) {
 }
 
 function isOverdue(task: TeamTaskRow) {
-  if (!task.task_due_date || task.task_status === "done") {
-    return false;
-  }
-
-  const dueDate = task.task_due_date instanceof Date ? task.task_due_date : new Date(`${task.task_due_date}T00:00:00`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return dueDate < today;
+  return task.task_status === "overdue";
 }
 
 function getFocusTask(tasks: TeamTaskRow[]) {
-  return tasks.find((task) => task.task_status === "in_progress") ?? tasks.find((task) => task.task_status !== "done");
+  return (
+    tasks.find((task) => task.task_status === "overdue") ??
+    tasks.find((task) => task.task_status === "in_progress") ??
+    tasks.find((task) => task.task_status !== "done")
+  );
 }
 
 function toLogData(log: LogRow): TaskLogData {
@@ -122,6 +119,7 @@ function toTaskDetailData(task: TeamTaskRow, assignedTo: string, mentionUsers: U
 
 export default async function TeamPage() {
   await requireUser();
+  await syncOverdueWorkItems();
 
   const [membersResult, tasksResult] = await Promise.all([
     query<TeamMemberRow>(
@@ -152,7 +150,7 @@ export default async function TeamPage() {
          users.name NULLS LAST,
          users.email,
          CASE projects.status WHEN 'active' THEN 0 ELSE 1 END,
-         CASE tasks.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 ELSE 2 END,
+         CASE tasks.status WHEN 'overdue' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'todo' THEN 2 ELSE 3 END,
          tasks.due_date ASC NULLS LAST,
          CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          projects.name,

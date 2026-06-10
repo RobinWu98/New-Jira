@@ -7,11 +7,9 @@ import {
   clearTwoFactorChallenge,
   clearTwoFactorTrust,
   createSession,
-  createTwoFactorChallenge,
   createTwoFactorTrust,
   destroySession,
   getTwoFactorChallengeUser,
-  hasValidTwoFactorTrust,
   requireAdmin,
   requireCreateProject,
   requireCreateTask,
@@ -144,7 +142,7 @@ function normalizeTaskPriority(priority: string) {
 }
 
 function normalizeTaskStatus(status: string) {
-  return ["todo", "in_progress", "done"].includes(status) ? status : "todo";
+  return ["todo", "in_progress", "overdue", "done"].includes(status) ? status : "todo";
 }
 
 function excerpt(value: string, maxLength = 140) {
@@ -293,19 +291,14 @@ export async function loginAction(_: AuthActionState, formData: FormData): Promi
   const email = asString(formData, "email").toLowerCase();
   const password = asString(formData, "password");
 
-  const result = await query<{ id: string; password_hash: string; two_factor_enabled: boolean }>(
-    "SELECT id, password_hash, two_factor_enabled FROM users WHERE email = $1 AND archived_at IS NULL LIMIT 1",
+  const result = await query<{ id: string; password_hash: string }>(
+    "SELECT id, password_hash FROM users WHERE email = $1 AND archived_at IS NULL LIMIT 1",
     [email]
   );
   const user = result.rows[0];
 
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return { error: "Email or password is incorrect." };
-  }
-
-  if (user.two_factor_enabled && !(await hasValidTwoFactorTrust(user.id))) {
-    await createTwoFactorChallenge(user.id);
-    redirect("/two-factor");
   }
 
   await createSession(user.id);
@@ -514,7 +507,19 @@ export async function createTaskAction(_: AuthActionState, formData: FormData): 
 
   const result = await query<{ id: string }>(
     `INSERT INTO tasks (project_id, title, assigned_to_id, start_date, due_date, priority, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     VALUES (
+       $1,
+       $2,
+       $3,
+       $4,
+       $5,
+       $6,
+       CASE
+         WHEN $7::text <> 'done' AND $5::date IS NOT NULL AND $5::date < current_date THEN 'overdue'
+         WHEN $7::text = 'overdue' THEN 'todo'
+         ELSE $7::text
+       END
+     )
      RETURNING id`,
     [projectId, title, assignedToId, startDate || null, dueDate || null, priority, status]
   );
@@ -600,17 +605,21 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
     return { error: "Task was not found." };
   }
 
-  const result = await query<{ id: string }>(
+  const result = await query<{ id: string; status: string }>(
     `UPDATE tasks
      SET title = $1,
          assigned_to_id = $2,
          start_date = $3,
          due_date = $4,
          priority = $5,
-         status = $6,
+         status = CASE
+           WHEN $6::text <> 'done' AND $4::date IS NOT NULL AND $4::date < current_date THEN 'overdue'
+           WHEN $6::text = 'overdue' THEN 'todo'
+           ELSE $6::text
+         END,
          updated_at = now()
      WHERE id = $7 AND project_id = $8 AND archived_at IS NULL
-     RETURNING id`,
+     RETURNING id, status`,
     [title, assignedToId, startDate || null, dueDate || null, priority, status, taskId, projectId]
   );
 
@@ -618,7 +627,15 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
     return { error: "Task was not found." };
   }
 
-  const logs = getWorkItemChangeLogs({ assignedTo: assignee, current, dueDate, priority, startDate, status, title });
+  const logs = getWorkItemChangeLogs({
+    assignedTo: assignee,
+    current,
+    dueDate,
+    priority,
+    startDate,
+    status: result.rows[0].status,
+    title
+  });
 
   for (const body of logs) {
     await createWorkItemLog({ action: "updated", actorId: user.id, body, taskId });
@@ -676,7 +693,19 @@ export async function createSubtaskAction(_: AuthActionState, formData: FormData
 
   const result = await query<{ id: string }>(
     `INSERT INTO subtasks (task_id, title, assigned_to_id, start_date, due_date, priority, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     VALUES (
+       $1,
+       $2,
+       $3,
+       $4,
+       $5,
+       $6,
+       CASE
+         WHEN $7::text <> 'done' AND $5::date IS NOT NULL AND $5::date < current_date THEN 'overdue'
+         WHEN $7::text = 'overdue' THEN 'todo'
+         ELSE $7::text
+       END
+     )
      RETURNING id`,
     [taskId, title, assignedToId, startDate || null, dueDate || null, priority, status]
   );
@@ -767,14 +796,18 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
     return { error: "Sub-task was not found." };
   }
 
-  const result = await query<{ id: string }>(
+  const result = await query<{ id: string; status: string }>(
     `UPDATE subtasks
      SET title = $1,
          assigned_to_id = $2,
          start_date = $3,
          due_date = $4,
          priority = $5,
-         status = $6,
+         status = CASE
+           WHEN $6::text <> 'done' AND $4::date IS NOT NULL AND $4::date < current_date THEN 'overdue'
+           WHEN $6::text = 'overdue' THEN 'todo'
+           ELSE $6::text
+         END,
          updated_at = now()
      FROM tasks
      WHERE subtasks.id = $7
@@ -783,7 +816,7 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
        AND tasks.project_id = $9
        AND subtasks.archived_at IS NULL
        AND tasks.archived_at IS NULL
-     RETURNING subtasks.id`,
+     RETURNING subtasks.id, subtasks.status`,
     [title, assignedToId, startDate || null, dueDate || null, priority, status, subtaskId, taskId, projectId]
   );
 
@@ -791,7 +824,15 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
     return { error: "Sub-task was not found." };
   }
 
-  const logs = getWorkItemChangeLogs({ assignedTo: assignee, current, dueDate, priority, startDate, status, title });
+  const logs = getWorkItemChangeLogs({
+    assignedTo: assignee,
+    current,
+    dueDate,
+    priority,
+    startDate,
+    status: result.rows[0].status,
+    title
+  });
 
   for (const body of logs) {
     await createWorkItemLog({ action: "updated", actorId: user.id, body, subtaskId, taskId });
@@ -893,10 +934,15 @@ export async function updateTaskStatusAction(_: AuthActionState, formData: FormD
   const result = await query<{
     id: string;
     title: string;
+    status: string;
     owner_id: string | null;
   }>(
     `UPDATE tasks
-     SET status = $1,
+     SET status = CASE
+           WHEN $1::text <> 'done' AND tasks.due_date IS NOT NULL AND tasks.due_date < current_date THEN 'overdue'
+           WHEN $1::text = 'overdue' THEN 'todo'
+           ELSE $1::text
+         END,
          updated_at = now()
      FROM projects
      WHERE tasks.id = $2
@@ -904,7 +950,7 @@ export async function updateTaskStatusAction(_: AuthActionState, formData: FormD
        AND projects.id = tasks.project_id
        AND tasks.archived_at IS NULL
        AND projects.archived_at IS NULL
-     RETURNING tasks.id, tasks.title, projects.owner_id`,
+     RETURNING tasks.id, tasks.title, tasks.status, projects.owner_id`,
     [status, taskId, projectId]
   );
   const task = result.rows[0];
@@ -913,18 +959,18 @@ export async function updateTaskStatusAction(_: AuthActionState, formData: FormD
     return { error: "Task was not found." };
   }
 
-  if (current && current.status !== status) {
+  if (current && current.status !== task.status) {
     await createWorkItemLog({
       action: "status_changed",
       actorId: user.id,
-      body: `Status changed from ${normalizeLogValue(current.status)} to ${normalizeLogValue(status)}.`,
+      body: `Status changed from ${normalizeLogValue(current.status)} to ${normalizeLogValue(task.status)}.`,
       taskId
     });
   }
 
   await createNotifications({
     actorId: user.id,
-    body: `${task.title} is now ${status.replaceAll("_", " ")}.`,
+    body: `${task.title} is now ${task.status.replaceAll("_", " ")}.`,
     projectId,
     recipients: [task.owner_id ?? ""].filter(Boolean),
     taskId,
@@ -966,10 +1012,15 @@ export async function updateSubtaskStatusAction(_: AuthActionState, formData: Fo
   const result = await query<{
     id: string;
     title: string;
+    status: string;
     owner_id: string | null;
   }>(
     `UPDATE subtasks
-     SET status = $1,
+     SET status = CASE
+           WHEN $1::text <> 'done' AND subtasks.due_date IS NOT NULL AND subtasks.due_date < current_date THEN 'overdue'
+           WHEN $1::text = 'overdue' THEN 'todo'
+           ELSE $1::text
+         END,
          updated_at = now()
      FROM tasks
      JOIN projects ON projects.id = tasks.project_id
@@ -980,7 +1031,7 @@ export async function updateSubtaskStatusAction(_: AuthActionState, formData: Fo
        AND subtasks.archived_at IS NULL
        AND tasks.archived_at IS NULL
        AND projects.archived_at IS NULL
-     RETURNING subtasks.id, subtasks.title, projects.owner_id`,
+     RETURNING subtasks.id, subtasks.title, subtasks.status, projects.owner_id`,
     [status, subtaskId, taskId, projectId]
   );
   const subtask = result.rows[0];
@@ -989,11 +1040,11 @@ export async function updateSubtaskStatusAction(_: AuthActionState, formData: Fo
     return { error: "Sub-task was not found." };
   }
 
-  if (current && current.status !== status) {
+  if (current && current.status !== subtask.status) {
     await createWorkItemLog({
       action: "status_changed",
       actorId: user.id,
-      body: `Status changed from ${normalizeLogValue(current.status)} to ${normalizeLogValue(status)}.`,
+      body: `Status changed from ${normalizeLogValue(current.status)} to ${normalizeLogValue(subtask.status)}.`,
       subtaskId,
       taskId
     });
@@ -1001,7 +1052,7 @@ export async function updateSubtaskStatusAction(_: AuthActionState, formData: Fo
 
   await createNotifications({
     actorId: user.id,
-    body: `${subtask.title} is now ${status.replaceAll("_", " ")}.`,
+    body: `${subtask.title} is now ${subtask.status.replaceAll("_", " ")}.`,
     projectId,
     recipients: [subtask.owner_id ?? ""].filter(Boolean),
     subtaskId,

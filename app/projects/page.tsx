@@ -79,6 +79,10 @@ function normalizeProjectStatus(status: string) {
   return status === "done" ? "done" : "active";
 }
 
+function formatProjectStatus(status: string) {
+  return normalizeProjectStatus(status) === "done" ? "Completed" : "Active";
+}
+
 function getDateTime(value: Date | string) {
   return value instanceof Date ? value.getTime() : new Date(`${value}T00:00:00`).getTime();
 }
@@ -122,7 +126,8 @@ function ProjectTable({
   currentUserId,
   canModify,
   viewSwitch,
-  searchForm
+  filterBar,
+  activeFilterLabels
 }: {
   title: string;
   status: ProjectStatusFilter;
@@ -131,38 +136,56 @@ function ProjectTable({
   currentUserId: string;
   canModify: boolean;
   viewSwitch: React.ReactNode;
-  searchForm: React.ReactNode;
+  filterBar: React.ReactNode;
+  activeFilterLabels: string[];
 }) {
   return (
     <div className={`project-group project-group-${status}`}>
-      <div className="project-group-toolbar">
-        <h3>
-          <span className={`project-keyword project-keyword-${status}`}>{PROJECT_STATUS_LABELS[status]} Projects</span>
-        </h3>
-        <div className="toolbar-actions">
-          {searchForm}
+      <div className="project-group-toolbar table-title-toolbar project-table-toolbar">
+        <div className="task-table-title-row project-table-title-row">
+          <div className="task-table-title-main">
+            <h3>
+              <span className={`project-keyword project-keyword-${status}`}>{PROJECT_STATUS_LABELS[status]} Projects</span>
+            </h3>
+            {activeFilterLabels.length ? (
+              <span className="title-filter-chips">
+                {activeFilterLabels.map((label) => (
+                  <span key={label}>{label}</span>
+                ))}
+              </span>
+            ) : null}
+          </div>
           {viewSwitch}
         </div>
+        {filterBar}
       </div>
       <DraggableScroll>
-        <div className={`project-list project-list-${status}`} role="table" aria-label={title}>
-          <div className="project-list-row project-list-head" role="row">
+        <div className={`project-list project-list-detailed project-list-${status}`} role="table" aria-label={title}>
+          <div className="project-list-row project-list-row-detailed project-list-head" role="row">
             <strong role="columnheader">Project</strong>
+            <strong role="columnheader">Creator</strong>
             <strong role="columnheader">Start</strong>
             <strong role="columnheader">Due Date</strong>
-            <strong role="columnheader">Creator</strong>
+            <strong role="columnheader">Tasks</strong>
+            <strong role="columnheader">Status</strong>
             <strong role="columnheader">Actions</strong>
           </div>
           {projects.map((project) => (
-            <div className="project-list-row" role="row" key={project.id}>
+            <div className="project-list-row project-list-row-detailed" role="row" key={project.id}>
               <span role="cell">
                 <a className="project-row-link" href={`/projects/${project.id}`}>
                   {project.name}
                 </a>
               </span>
+              <span role="cell">{project.owner_name || project.owner_email || "Unassigned"}</span>
               <span role="cell">{formatDate(project.start_date)}</span>
               <span role="cell">{formatDate(project.ddl)}</span>
-              <span role="cell">{project.owner_name || project.owner_email || "Unassigned"}</span>
+              <span role="cell">{project.task_count}</span>
+              <span role="cell">
+                <span className={`status-pill status-${normalizeProjectStatus(project.status)}`}>
+                  {formatProjectStatus(project.status)}
+                </span>
+              </span>
               <span role="cell" className="record-actions">
                 {canModify ? (
                   <>
@@ -262,6 +285,12 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
     done: filteredProjects.filter((project) => normalizeProjectStatus(project.status) === "done"),
     all: filteredProjects
   } satisfies Record<ProjectStatusFilter, ProjectRow[]>;
+  const ownerFilterLabel = selectedOwnerId ? users.find((owner) => owner.id === selectedOwnerId)?.label : "";
+  const activeFilterLabels = [
+    queryText ? `Search: ${queryText}` : "",
+    ownerFilterLabel ? `Owner: ${ownerFilterLabel}` : "",
+    selectedSort !== "ddl_asc" ? `Sort: ${PROJECT_SORT_LABELS[selectedSort]}` : ""
+  ].filter(Boolean);
   const userCanCreateProject = canCreateProject(user);
   const userCanManageProject = canManageProject(user);
 
@@ -274,39 +303,6 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
             {userCanCreateProject ? <CreateProjectModal users={users} currentUserId={user.id} /> : null}
           </div>
         </div>
-        <form className="filter-bar project-filter-bar" action="/projects">
-          <input name="status" type="hidden" value={selectedStatus} />
-          {queryText ? <input name="q" type="hidden" value={queryText} /> : null}
-          <div className="filter-field">
-            <label htmlFor="project-owner">Owner</label>
-            <select id="project-owner" name="owner" defaultValue={selectedOwnerId}>
-              <option value="">All owners</option>
-              {users.map((owner) => (
-                <option value={owner.id} key={owner.id}>
-                  {owner.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label htmlFor="project-sort">Sort</label>
-            <select id="project-sort" name="sort" defaultValue={selectedSort}>
-              {(Object.keys(PROJECT_SORT_LABELS) as ProjectSort[]).map((sort) => (
-                <option value={sort} key={sort}>
-                  {PROJECT_SORT_LABELS[sort]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-actions">
-            <button className="button" type="submit">
-              Apply
-            </button>
-            <a className="button secondary" href={`/projects?status=${selectedStatus}`}>
-              Reset
-            </a>
-          </div>
-        </form>
         <ProjectTable
           title={`${PROJECT_STATUS_LABELS[selectedStatus]} Projects`}
           status={selectedStatus}
@@ -314,16 +310,43 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
           users={users}
           currentUserId={user.id}
           canModify={userCanManageProject}
-          searchForm={
-            <form className="table-title-search" action="/projects">
+          activeFilterLabels={activeFilterLabels}
+          filterBar={
+            <form className="title-filter-bar project-title-filter-bar" action="/projects">
               <input name="status" type="hidden" value={selectedStatus} />
-              {selectedOwnerId ? <input name="owner" type="hidden" value={selectedOwnerId} /> : null}
-              {selectedSort !== "ddl_asc" ? <input name="sort" type="hidden" value={selectedSort} /> : null}
-              <label className="sr-only" htmlFor="project-search">Search projects</label>
-              <input id="project-search" name="q" type="search" defaultValue={queryText} placeholder="Search projects" />
-              <button className="button secondary" type="submit">
-                Search
-              </button>
+              <div className="filter-field">
+                <label htmlFor="project-search">Search</label>
+                <input id="project-search" name="q" type="search" defaultValue={queryText} placeholder="Search projects" />
+              </div>
+              <div className="filter-field">
+                <label htmlFor="project-owner">Owner</label>
+                <select id="project-owner" name="owner" defaultValue={selectedOwnerId}>
+                  <option value="">All owners</option>
+                  {users.map((owner) => (
+                    <option value={owner.id} key={owner.id}>
+                      {owner.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter-field">
+                <label htmlFor="project-sort">Sort</label>
+                <select id="project-sort" name="sort" defaultValue={selectedSort}>
+                  {(Object.keys(PROJECT_SORT_LABELS) as ProjectSort[]).map((sort) => (
+                    <option value={sort} key={sort}>
+                      {PROJECT_SORT_LABELS[sort]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter-actions">
+                <button className="button" type="submit">
+                  Apply
+                </button>
+                <a className="button secondary" href={`/projects?status=${selectedStatus}`}>
+                  Reset
+                </a>
+              </div>
             </form>
           }
           viewSwitch={

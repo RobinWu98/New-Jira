@@ -26,9 +26,18 @@ export function PageHeader({ title, subtitle, children, hideBack = false }: Page
         {children ? <div className="masthead-extra">{children}</div> : null}
       </div>
       {!hideBack && canGoBack ? (
-        <button type="button" className="back-button" onClick={() => router.back()}>
-          <span aria-hidden="true">←</span>
-          <span className="sr-only">Go back</span>
+        <button
+          aria-label="go back to previous page"
+          className="back-button"
+          onClick={() => router.back()}
+          title="go back to previous page"
+          type="button"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M15 18l-6-6 6-6" />
+            <path d="M9 12h12" />
+          </svg>
+          <span className="sr-only">go back to previous page</span>
         </button>
       ) : null}
     </header>

@@ -13,6 +13,7 @@ import {
 import { ResizableTaskColumnHeader, ResizableTaskTable } from "@/components/ResizableTaskTable";
 import { canCreateTask, canManageTask, requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { syncOverdueWorkItems } from "@/lib/overdue";
 
 type ProjectDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -86,7 +87,7 @@ type LogRow = {
 };
 
 type TaskPriorityFilter = "all" | "high" | "medium" | "low";
-type TaskStatusFilter = "active" | "done" | "all";
+type TaskStatusFilter = "active" | "overdue" | "done" | "all";
 type TaskSort = "default" | "due_date" | "priority" | "status" | "assignee" | "title" | "newest";
 
 const TASK_PRIORITY_LABELS: Record<TaskPriorityFilter, string> = {
@@ -98,6 +99,7 @@ const TASK_PRIORITY_LABELS: Record<TaskPriorityFilter, string> = {
 
 const TASK_STATUS_LABELS: Record<TaskStatusFilter, string> = {
   active: "Active",
+  overdue: "Overdue",
   done: "Completed",
   all: "View All"
 };
@@ -149,7 +151,13 @@ function normalizeTaskPriorityFilter(value: string | undefined): TaskPriorityFil
 }
 
 function normalizeTaskStatusFilter(value: string | undefined): TaskStatusFilter {
-  return value === "done" || value === "completed" ? "done" : value === "all" ? "all" : "active";
+  return value === "done" || value === "completed"
+    ? "done"
+    : value === "overdue"
+      ? "overdue"
+      : value === "all"
+        ? "all"
+        : "active";
 }
 
 function normalizeTaskSort(value: string | undefined): TaskSort {
@@ -176,7 +184,7 @@ function getPriorityRank(priority: string) {
 }
 
 function getStatusRank(status: string) {
-  return status === "done" ? 2 : status === "in_progress" ? 1 : 0;
+  return status === "overdue" ? 0 : status === "in_progress" ? 1 : status === "todo" ? 2 : 3;
 }
 
 function getTaskHref(params: {
@@ -369,6 +377,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     notFound();
   }
 
+  await syncOverdueWorkItems();
+
   const [projectResult, tasksResult, subtasksResult, taskCommentsResult, subtaskCommentsResult, logsResult, usersResult] =
     await Promise.all([
     query<ProjectRow>(
@@ -405,7 +415,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
        WHERE tasks.project_id = $1
          AND tasks.archived_at IS NULL
        ORDER BY
-         CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+         CASE tasks.status WHEN 'overdue' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'todo' THEN 2 ELSE 3 END,
          tasks.due_date ASC NULLS LAST,
          CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          tasks.created_at DESC`,
@@ -432,7 +442,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
          AND subtasks.archived_at IS NULL
        ORDER BY
          subtasks.due_date ASC NULLS LAST,
-         CASE subtasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+         CASE subtasks.status WHEN 'overdue' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'todo' THEN 2 ELSE 3 END,
          CASE subtasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          subtasks.created_at DESC`,
       [id]
@@ -531,6 +541,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     });
   const taskGroups = {
     active: baseFilteredTasks.filter((task) => task.status !== "done"),
+    overdue: baseFilteredTasks.filter((task) => task.status === "overdue"),
     done: baseFilteredTasks.filter((task) => task.status === "done"),
     all: baseFilteredTasks
   } satisfies Record<TaskStatusFilter, TaskRow[]>;
@@ -607,12 +618,11 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       </section>
       <section className="panel">
         <div className="project-group-toolbar table-title-toolbar">
-          <details className="title-filter-disclosure" open={activeFilterLabels.length > 0}>
-            <summary>
+          <div className="task-table-title-row">
+            <div className="task-table-title-main">
               <span className={`project-keyword task-view-keyword task-view-keyword-${selectedTaskStatus}`}>
                 {TASK_STATUS_LABELS[selectedTaskStatus]} Tasks
               </span>
-              <span className="title-filter-toggle">Filters</span>
               {activeFilterLabels.length ? (
                 <span className="title-filter-chips">
                   {activeFilterLabels.map((label) => (
@@ -620,64 +630,13 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
                   ))}
                 </span>
               ) : null}
-            </summary>
-            <form className="title-filter-bar task-filter-bar" action={`/projects/${project.id}`}>
-              <input name="taskStatus" type="hidden" value={selectedTaskStatus} />
-              <div className="filter-field">
-                <label htmlFor="task-search">Search</label>
-                <input id="task-search" name="q" type="search" defaultValue={queryText} placeholder="Search tasks" />
-              </div>
-              <div className="filter-field">
-                <label htmlFor="task-assignee">Assignee</label>
-                <select id="task-assignee" name="assignee" defaultValue={selectedAssigneeId}>
-                  <option value="">Everyone</option>
-                  {users.map((assignee) => (
-                    <option value={assignee.id} key={assignee.id}>
-                      {assignee.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-field">
-                <label htmlFor="task-priority">Priority</label>
-                <select id="task-priority" name="priority" defaultValue={selectedPriority}>
-                  {(Object.keys(TASK_PRIORITY_LABELS) as TaskPriorityFilter[]).map((priority) => (
-                    <option value={priority} key={priority}>
-                      {TASK_PRIORITY_LABELS[priority]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-field">
-                <label htmlFor="task-sort">Sort</label>
-                <select id="task-sort" name="sort" defaultValue={selectedTaskSort}>
-                  {(Object.keys(TASK_SORT_LABELS) as TaskSort[]).map((sort) => (
-                    <option value={sort} key={sort}>
-                      {TASK_SORT_LABELS[sort]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-actions">
-                <button className="button" type="submit">
-                  Apply
-                </button>
-                <a className="button secondary" href={`/projects/${project.id}`}>
-                  Reset
-                </a>
-              </div>
-            </form>
-          </details>
-          <div className="toolbar-actions">
-            <span className="result-count">
-              {filteredTasks.length} of {tasksResult.rows.length}
-            </span>
+            </div>
             <nav className="table-view-switch" aria-label="Task table view">
               <button className="button secondary table-view-trigger" type="button" aria-haspopup="true">
                 Table View: {TASK_STATUS_LABELS[selectedTaskStatus]} ({taskGroups[selectedTaskStatus].length})
               </button>
               <div className="table-view-menu" role="menu">
-                {(["active", "done", "all"] as TaskStatusFilter[]).map((status) => (
+                {(["active", "overdue", "done", "all"] as TaskStatusFilter[]).map((status) => (
                   <a
                     className={selectedTaskStatus === status ? "is-active" : ""}
                     href={getTaskHref({
@@ -697,6 +656,52 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               </div>
             </nav>
           </div>
+          <form className="title-filter-bar task-filter-bar" action={`/projects/${project.id}`}>
+            <input name="taskStatus" type="hidden" value={selectedTaskStatus} />
+            <div className="filter-field">
+              <label htmlFor="task-search">Search</label>
+              <input id="task-search" name="q" type="search" defaultValue={queryText} placeholder="Search tasks" />
+            </div>
+            <div className="filter-field">
+              <label htmlFor="task-assignee">Assignee</label>
+              <select id="task-assignee" name="assignee" defaultValue={selectedAssigneeId}>
+                <option value="">Everyone</option>
+                {users.map((assignee) => (
+                  <option value={assignee.id} key={assignee.id}>
+                    {assignee.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-field">
+              <label htmlFor="task-priority">Priority</label>
+              <select id="task-priority" name="priority" defaultValue={selectedPriority}>
+                {(Object.keys(TASK_PRIORITY_LABELS) as TaskPriorityFilter[]).map((priority) => (
+                  <option value={priority} key={priority}>
+                    {TASK_PRIORITY_LABELS[priority]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-field">
+              <label htmlFor="task-sort">Sort</label>
+              <select id="task-sort" name="sort" defaultValue={selectedTaskSort}>
+                {(Object.keys(TASK_SORT_LABELS) as TaskSort[]).map((sort) => (
+                  <option value={sort} key={sort}>
+                    {TASK_SORT_LABELS[sort]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-actions">
+              <button className="button" type="submit">
+                Apply
+              </button>
+              <a className="button secondary" href={`/projects/${project.id}`}>
+                Reset
+              </a>
+            </div>
+          </form>
         </div>
         <ResizableTaskTable
           ariaLabel={`${project.name} tasks`}

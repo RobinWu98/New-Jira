@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useActionState, useState, useRef, useEffect } from "react";
 import {
+  type AuthActionState,
   updateTaskAction,
   updateTaskStatusAction,
   updateSubtaskAction,
@@ -19,13 +20,15 @@ type Props = {
   assignedToId?: string;
   startDate?: string;
   dueDate?: string;
+  status?: string;
 };
 
 const PRIORITY_OPTIONS = ["low", "medium", "high"] as const;
-const STATUS_OPTIONS = ["todo", "in_progress", "done"] as const;
+const STATUS_OPTIONS = ["todo", "in_progress", "overdue", "done"] as const;
+const initialState: AuthActionState = {};
 
 export default function InlinePicker(props: Props) {
-  const { kind, type, current, projectId, taskId, subtaskId, title = "", assignedToId = "", startDate = "", dueDate = "" } = props;
+  const { kind, type, current, projectId, taskId, subtaskId, title = "", assignedToId = "", startDate = "", dueDate = "", status = "todo" } = props;
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -41,13 +44,14 @@ export default function InlinePicker(props: Props) {
 
   const options = kind === "priority" ? Array.from(PRIORITY_OPTIONS) : Array.from(STATUS_OPTIONS);
 
-  function actionFor(option: string) {
+  function getAction() {
     if (type === "task") {
       return kind === "priority" ? updateTaskAction : updateTaskStatusAction;
     }
 
     return kind === "priority" ? updateSubtaskAction : updateSubtaskStatusAction;
   }
+  const [, formAction] = useActionState(getAction(), initialState);
 
   return (
     <div className="inline-picker" ref={rootRef}>
@@ -62,7 +66,7 @@ export default function InlinePicker(props: Props) {
       {open ? (
         <div className="picker-dropdown" role="menu">
           {options.map((opt) => (
-            <form key={opt} action={actionFor(opt)} className="inline-picker-form">
+            <form key={opt} action={formAction} className="inline-picker-form">
               <input name="projectId" type="hidden" value={projectId} />
               <input name="taskId" type="hidden" value={taskId} />
               {subtaskId ? <input name="subtaskId" type="hidden" value={subtaskId} /> : null}
@@ -72,6 +76,7 @@ export default function InlinePicker(props: Props) {
                   <input name="assignedToId" type="hidden" value={assignedToId} />
                   <input name="startDate" type="hidden" value={startDate} />
                   <input name="dueDate" type="hidden" value={dueDate} />
+                  <input name="status" type="hidden" value={status} />
                 </>
               ) : null}
               {kind === "priority" && type === "subtask" ? (
@@ -80,6 +85,7 @@ export default function InlinePicker(props: Props) {
                   <input name="assignedToId" type="hidden" value={assignedToId} />
                   <input name="startDate" type="hidden" value={startDate} />
                   <input name="dueDate" type="hidden" value={dueDate} />
+                  <input name="status" type="hidden" value={status} />
                 </>
               ) : null}
               <input name={kind === "priority" ? "priority" : "status"} type="hidden" value={opt} />

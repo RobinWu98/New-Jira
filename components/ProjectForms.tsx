@@ -666,6 +666,7 @@ function TaskForm({
           <select id={`${task?.id ?? "new"}-task-status`} name="status" defaultValue={task?.status ?? "todo"}>
             <option value="todo">Todo</option>
             <option value="in_progress">In Progress</option>
+            <option value="overdue">Overdue</option>
             <option value="done">Done</option>
           </select>
         </div>
@@ -775,6 +776,7 @@ function SubtaskForm({
           <select id={`${subtask?.id ?? taskId}-subtask-status`} name="status" defaultValue={subtask?.status ?? "todo"}>
             <option value="todo">Todo</option>
             <option value="in_progress">In Progress</option>
+            <option value="overdue">Overdue</option>
             <option value="done">Done</option>
           </select>
         </div>
@@ -886,6 +888,7 @@ function WorkItemStatusForm({
       <select id={statusId} name="status" defaultValue={currentStatus}>
         <option value="todo">Todo</option>
         <option value="in_progress">In Progress</option>
+        <option value="overdue">Overdue</option>
         <option value="done">Done</option>
       </select>
       <button className="button secondary" type="submit">
@@ -962,6 +965,7 @@ export function TaskWithSubtasks({
             assignedToId={task.assignedToId}
             startDate={task.startDate}
             dueDate={task.dueDate}
+            status={task.status}
           />
         </span>
         <span role="cell">
@@ -1021,6 +1025,7 @@ export function TaskWithSubtasks({
                   assignedToId={subtask.assignedToId}
                   startDate={subtask.startDate}
                   dueDate={subtask.dueDate}
+                  status={subtask.status}
                 />
               </span>
               <span role="cell">

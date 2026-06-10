@@ -1,16 +1,11 @@
 "use client";
 
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis
 } from "recharts";
 
 type ChartDatum = {
@@ -21,42 +16,43 @@ type ChartDatum = {
 
 type DashboardChartProps = {
   statusData: ChartDatum[];
-  priorityData: ChartDatum[];
 };
 
-export function DashboardChart({ statusData, priorityData }: DashboardChartProps) {
+export function DashboardChart({ statusData }: DashboardChartProps) {
   return (
-    <div className="dashboard-chart-grid">
+    <div className="dashboard-chart-grid single-chart">
       <div className="chart-panel" aria-label="Task status chart">
-        <h3>Status Split</h3>
         <div className="chart-box">
-          <ResponsiveContainer width="100%" height={240}>
+          <ResponsiveContainer width="100%" height={280}>
             <PieChart>
-              <Pie data={statusData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={88} stroke="#6b5744" strokeWidth={2}>
+              <Pie
+                data={statusData}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={70}
+                outerRadius={116}
+                paddingAngle={2}
+                stroke="#ffffff"
+                strokeWidth={3}
+              >
                 {statusData.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip
+                contentStyle={{
+                  border: "1px solid #172b4d",
+                  borderRadius: 8,
+                  boxShadow: "0 8px 20px rgba(9, 30, 66, 0.18)",
+                  color: "#091e42",
+                  fontSize: 18,
+                  fontWeight: 800,
+                  padding: "12px 14px"
+                }}
+                itemStyle={{ fontSize: 18, fontWeight: 800 }}
+                wrapperStyle={{ zIndex: 20 }}
+              />
             </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-      <div className="chart-panel" aria-label="Task priority chart">
-        <h3>Priority Load</h3>
-        <div className="chart-box">
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={priorityData} margin={{ top: 12, right: 12, bottom: 0, left: -20 }}>
-              <CartesianGrid stroke="#d4c2aa" strokeDasharray="4 4" />
-              <XAxis dataKey="name" stroke="#3d332a" />
-              <YAxis allowDecimals={false} stroke="#3d332a" />
-              <Tooltip />
-              <Bar dataKey="value" stroke="#6b5744" strokeWidth={2}>
-                {priorityData.map((entry) => (
-                  <Cell key={entry.name} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
           </ResponsiveContainer>
         </div>
       </div>

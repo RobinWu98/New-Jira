@@ -180,9 +180,28 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 UPDATE projects SET status = 'active' WHERE status NOT IN ('active', 'done');
 UPDATE tasks SET priority = 'medium' WHERE priority NOT IN ('low', 'medium', 'high');
-UPDATE tasks SET status = 'todo' WHERE status NOT IN ('todo', 'in_progress', 'done');
+UPDATE tasks SET status = 'todo' WHERE status NOT IN ('todo', 'in_progress', 'overdue', 'done');
 UPDATE subtasks SET priority = 'medium' WHERE priority NOT IN ('low', 'medium', 'high');
-UPDATE subtasks SET status = 'todo' WHERE status NOT IN ('todo', 'in_progress', 'done');
+UPDATE subtasks SET status = 'todo' WHERE status NOT IN ('todo', 'in_progress', 'overdue', 'done');
+
+ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
+ALTER TABLE subtasks DROP CONSTRAINT IF EXISTS subtasks_status_check;
+
+UPDATE tasks
+SET status = 'overdue',
+    updated_at = now()
+WHERE due_date IS NOT NULL
+  AND due_date < current_date
+  AND status <> 'done'
+  AND archived_at IS NULL;
+
+UPDATE subtasks
+SET status = 'overdue',
+    updated_at = now()
+WHERE due_date IS NOT NULL
+  AND due_date < current_date
+  AND status <> 'done'
+  AND archived_at IS NULL;
 
 DO $$
 BEGIN
@@ -206,15 +225,9 @@ BEGIN
       CHECK (priority IN ('low', 'medium', 'high'));
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conname = 'tasks_status_check'
-  ) THEN
-    ALTER TABLE tasks
-      ADD CONSTRAINT tasks_status_check
-      CHECK (status IN ('todo', 'in_progress', 'done'));
-  END IF;
+  ALTER TABLE tasks
+    ADD CONSTRAINT tasks_status_check
+    CHECK (status IN ('todo', 'in_progress', 'overdue', 'done'));
 
   IF NOT EXISTS (
     SELECT 1
@@ -226,15 +239,9 @@ BEGIN
       CHECK (priority IN ('low', 'medium', 'high'));
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conname = 'subtasks_status_check'
-  ) THEN
-    ALTER TABLE subtasks
-      ADD CONSTRAINT subtasks_status_check
-      CHECK (status IN ('todo', 'in_progress', 'done'));
-  END IF;
+  ALTER TABLE subtasks
+    ADD CONSTRAINT subtasks_status_check
+    CHECK (status IN ('todo', 'in_progress', 'overdue', 'done'));
 END $$;
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to_id UUID REFERENCES users(id) ON DELETE RESTRICT;

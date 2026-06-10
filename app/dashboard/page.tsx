@@ -5,6 +5,7 @@ import { TaskDetailModal, type TaskCommentData, type TaskLogData, type UserOptio
 import { ResizableTaskColumnHeader, ResizableTaskTable } from "@/components/ResizableTaskTable";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { syncOverdueWorkItems } from "@/lib/overdue";
 
 type DashboardPageProps = {
   searchParams: Promise<{ range?: string }>;
@@ -17,13 +18,15 @@ type TaskRow = {
   project_id: string;
   title: string;
   priority: "low" | "medium" | "high";
-  status: "todo" | "in_progress" | "done";
+  status: "todo" | "in_progress" | "overdue" | "done";
   project_name: string;
   assigned_to_name: string | null;
   assigned_to_email: string;
   start_date: Date | string | null;
   due_date: Date | string | null;
 };
+
+type SubtaskRow = TaskRow;
 
 type CommentRow = {
   author_id: string | null;
@@ -207,19 +210,10 @@ function getSummary(tasks: TaskRow[]) {
   const total = tasks.length;
   const done = tasks.filter((task) => task.status === "done").length;
   const inProgress = tasks.filter((task) => task.status === "in_progress").length;
+  const overdue = tasks.filter((task) => task.status === "overdue").length;
   const todo = tasks.filter((task) => task.status === "todo").length;
   const remaining = total - done;
   const highRemaining = tasks.filter((task) => task.priority === "high" && task.status !== "done").length;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const overdue = tasks.filter((task) => {
-    if (!task.due_date) {
-      return false;
-    }
-
-    const dueDate = task.due_date instanceof Date ? task.due_date : new Date(`${task.due_date}T00:00:00`);
-    return task.status !== "done" && dueDate < today;
-  }).length;
 
   return { total, done, inProgress, todo, remaining, highRemaining, overdue };
 }
@@ -229,6 +223,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const params = await searchParams;
   const range = normalizeRange(params.range);
   const window = getRangeWindow(range);
+
+  await syncOverdueWorkItems();
 
   const values: unknown[] = [user.id];
   const windowClause =
@@ -240,7 +236,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     values.push(toDateInput(window.start), toDateInput(window.end));
   }
 
-  const [tasksResult, usersResult] = await Promise.all([
+  const [tasksResult, subtasksResult, usersResult] = await Promise.all([
     query<TaskRow>(
       `SELECT
          tasks.id,
@@ -264,8 +260,36 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
          CASE projects.status WHEN 'active' THEN 0 ELSE 1 END,
          tasks.due_date ASC NULLS LAST,
          CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
-         CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+         CASE tasks.status WHEN 'overdue' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'todo' THEN 2 ELSE 3 END,
          tasks.created_at DESC`,
+      values
+    ),
+    query<SubtaskRow>(
+      `SELECT
+         subtasks.id,
+         tasks.project_id,
+         subtasks.title,
+         subtasks.priority,
+         subtasks.status,
+         projects.name AS project_name,
+         users.name AS assigned_to_name,
+         users.email::text AS assigned_to_email,
+         subtasks.start_date,
+         subtasks.due_date
+       FROM subtasks
+       JOIN tasks ON tasks.id = subtasks.task_id
+       JOIN projects ON projects.id = tasks.project_id
+       JOIN users ON users.id = subtasks.assigned_to_id
+       WHERE subtasks.assigned_to_id = $1
+         AND subtasks.archived_at IS NULL
+         AND tasks.archived_at IS NULL
+         AND projects.archived_at IS NULL
+         ${windowClause}
+       ORDER BY
+         tasks.due_date ASC NULLS LAST,
+         CASE subtasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+         CASE subtasks.status WHEN 'overdue' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'todo' THEN 2 ELSE 3 END,
+         subtasks.created_at DESC`,
       values
     ),
     query<UserRow>(
@@ -273,46 +297,49 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     )
   ]);
 
-  const tasks = tasksResult.rows;
+  // merge tasks and subtasks — treat them equally
+  const tasks = [...tasksResult.rows, ...subtasksResult.rows.map((s) => ({
+    id: s.id,
+    project_id: s.project_id,
+    title: s.title,
+    priority: s.priority,
+    status: s.status,
+    project_name: s.project_name,
+    assigned_to_name: s.assigned_to_name,
+    assigned_to_email: s.assigned_to_email,
+    start_date: s.start_date,
+    due_date: s.due_date
+  }))];
   const mentionUsers = usersResult.rows.map((user) => ({
     id: user.id,
     label: user.name ? `${user.name} (${user.email})` : user.email,
     createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at)
   }));
-  const taskIds = tasks.map((task) => task.id);
-  const commentsResult = taskIds.length
-    ? await query<CommentRow>(
-        `SELECT
-           task_comments.id,
-           task_comments.task_id AS work_item_id,
-           task_comments.author_id,
-           users.name AS author_name,
-           users.email::text AS author_email,
-           task_comments.body,
-           task_comments.created_at
+  const itemIds = tasks.map((task) => task.id);
+  const commentsResult = itemIds.length
+          ? await query<CommentRow>(
+              `SELECT task_comments.id AS id, task_id AS work_item_id, author_id, users.name AS author_name, users.email::text AS author_email, body, task_comments.created_at AS created_at
          FROM task_comments
          LEFT JOIN users ON users.id = task_comments.author_id
          WHERE task_comments.task_id = ANY($1::uuid[])
-         ORDER BY task_comments.created_at ASC`,
-        [taskIds]
+         UNION ALL
+                  SELECT subtask_comments.id AS id, subtask_id AS work_item_id, author_id, users.name AS author_name, users.email::text AS author_email, body, subtask_comments.created_at AS created_at
+         FROM subtask_comments
+         LEFT JOIN users ON users.id = subtask_comments.author_id
+         WHERE subtask_comments.subtask_id = ANY($1::uuid[])
+         ORDER BY created_at ASC`,
+        [itemIds]
       )
     : { rows: [] };
-  const logsResult = taskIds.length
+
+  const logsResult = itemIds.length
     ? await query<LogRow>(
-        `SELECT
-           work_item_logs.id,
-           work_item_logs.task_id AS work_item_id,
-           users.name AS actor_name,
-           users.email::text AS actor_email,
-           work_item_logs.action,
-           work_item_logs.body,
-           work_item_logs.created_at
+        `SELECT work_item_logs.id, COALESCE(work_item_logs.subtask_id::text, work_item_logs.task_id::text) AS work_item_id, users.name AS actor_name, users.email::text AS actor_email, work_item_logs.action, work_item_logs.body, work_item_logs.created_at
          FROM work_item_logs
          LEFT JOIN users ON users.id = work_item_logs.actor_id
-         WHERE work_item_logs.task_id = ANY($1::uuid[])
-           AND work_item_logs.subtask_id IS NULL
+         WHERE (work_item_logs.task_id = ANY($1::uuid[]) OR work_item_logs.subtask_id = ANY($1::uuid[]))
          ORDER BY work_item_logs.created_at ASC`,
-        [taskIds]
+        [itemIds]
       )
     : { rows: [] };
   const commentsByTask = groupComments(commentsResult.rows, user);
@@ -323,22 +350,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       ? "across all assigned projects"
       : `for ${RANGE_LABELS[range].toLowerCase()}`;
   const statusData = [
-    { name: "Todo", value: summary.todo, color: "#8590a2" },
+    { name: "Overdue", value: summary.overdue, color: "#de350b" },
+    { name: "Todo", value: summary.todo, color: "#f39c12" },
     { name: "In Progress", value: summary.inProgress, color: "#0c66e4" },
     { name: "Done", value: summary.done, color: "#22a06b" }
-  ];
-  const priorityData = [
-    { name: "High", value: tasks.filter((task) => task.priority === "high").length, color: "#f15b50" },
-    { name: "Medium", value: tasks.filter((task) => task.priority === "medium").length, color: "#f5cd47" },
-    { name: "Low", value: tasks.filter((task) => task.priority === "low").length, color: "#579dff" }
   ];
 
   return (
     <AppFrame shellClassName="dashboard-shell">
       <PageHeader title="My Dashboard" subtitle={user.name || user.email} />
-      <section className="panel">
+      <section className="panel workload-panel">
         <div className="section-toolbar">
-          <h2>Workload Summary</h2>
+          <h2>Workload</h2>
           <nav className="segmented-nav" aria-label="Dashboard range">
             {(["all", "month", "week"] as WorkloadRange[]).map((option) => (
               <a
@@ -351,40 +374,33 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             ))}
           </nav>
         </div>
-        <div className="notice">
-          You have {summary.total} task{summary.total === 1 ? "" : "s"} {rangeText}; {summary.remaining} remain
-          {summary.overdue ? `, including ${summary.overdue} overdue` : ""}.
-        </div>
-        <div className="summary-grid">
-          <div>
-            <strong>Total</strong>
-            <span>{summary.total}</span>
-          </div>
-          <div>
-            <strong>Remaining</strong>
-            <span>{summary.remaining}</span>
-          </div>
-          <div>
-            <strong>In Progress</strong>
-            <span>{summary.inProgress}</span>
-          </div>
-          <div>
-            <strong>Done</strong>
-            <span>{summary.done}</span>
-          </div>
-          <div>
-            <strong>High Priority</strong>
-            <span>{summary.highRemaining}</span>
-          </div>
-          <div>
-            <strong>Overdue</strong>
-            <span>{summary.overdue}</span>
+        <div className="workload-layout">
+          <DashboardChart statusData={statusData} />
+          <div className="workload-copy">
+            <div className="workload-summary" aria-label="Workload summary">
+              <div className="workload-summary-row is-total">
+                <span>Total</span>
+                <strong>{summary.total}</strong>
+              </div>
+              <div className="workload-summary-row workload-status-todo">
+                <span>Todo</span>
+                <strong>{summary.todo}</strong>
+              </div>
+              <div className="workload-summary-row workload-status-in-progress">
+                <span>In Progress</span>
+                <strong>{summary.inProgress}</strong>
+              </div>
+              <div className="workload-summary-row workload-status-done">
+                <span>Done</span>
+                <strong>{summary.done}</strong>
+              </div>
+              <div className="workload-summary-row workload-status-overdue">
+                <span>Overdue</span>
+                <strong>{summary.overdue}</strong>
+              </div>
+            </div>
           </div>
         </div>
-      </section>
-      <section className="panel">
-        <h2>Workload Chart</h2>
-        <DashboardChart statusData={statusData} priorityData={priorityData} />
       </section>
       <section className="panel">
         <div className="section-toolbar">
@@ -394,15 +410,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <ResizableTaskTable
             ariaLabel="Assigned tasks"
             className="dashboard-task-table"
-            defaultWidths={[280, 210, 130, 120, 130]}
+            defaultWidths={[320, 160, 120, 120, 100, 200]}
             storageKey="dashboard-task-table-widths"
           >
             <div className="tasks-table-row dashboard-task-row tasks-table-head" role="row">
               <ResizableTaskColumnHeader index={0}>Task</ResizableTaskColumnHeader>
               <ResizableTaskColumnHeader index={1}>Project</ResizableTaskColumnHeader>
-              <ResizableTaskColumnHeader index={2}>Due Date</ResizableTaskColumnHeader>
-              <ResizableTaskColumnHeader index={3}>Priority</ResizableTaskColumnHeader>
-              <ResizableTaskColumnHeader index={4}>Status</ResizableTaskColumnHeader>
+              <ResizableTaskColumnHeader index={2}>Start</ResizableTaskColumnHeader>
+              <ResizableTaskColumnHeader index={3}>Due Date</ResizableTaskColumnHeader>
+              <ResizableTaskColumnHeader index={4}>Priority</ResizableTaskColumnHeader>
+              <ResizableTaskColumnHeader index={5}>Status</ResizableTaskColumnHeader>
             </div>
             {tasks.map((task) => (
               <div className="tasks-table-row dashboard-task-row" role="row" key={task.id}>
@@ -412,6 +429,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   />
                 </span>
                 <span role="cell">{task.project_name}</span>
+                <span role="cell">{task.start_date ? formatDate(task.start_date) : "No date"}</span>
                 <span role="cell">{formatOptionalDate(task.due_date)}</span>
                 <span role="cell">
                   <span className={`task-pill priority-${task.priority}`}>{formatLabel(task.priority)}</span>
