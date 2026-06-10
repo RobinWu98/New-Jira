@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { CompleteInvitedRegistrationForm } from "@/components/AuthForms";
+import { PageHeader } from "@/components/PageHeader";
 import { getCurrentUser } from "@/lib/auth";
 import { hashToken } from "@/lib/crypto";
 import { query } from "@/lib/db";
@@ -39,9 +40,7 @@ export default async function CompleteRegistrationPage({ searchParams }: Complet
   return (
     <main className="page">
       <div className="shell">
-        <header className="masthead">
-          <h1>Complete Registration</h1>
-        </header>
+        <PageHeader title="Complete Registration" />
         <section className="panel">
           {invite ? (
             <>
@@ -53,11 +52,6 @@ export default async function CompleteRegistrationPage({ searchParams }: Complet
             <>
               <h2>Link Expired</h2>
               <div className="notice error">This registration link is invalid or expired.</div>
-              <div className="button-row">
-                <a className="button secondary" href="/login">
-                  Back to Login
-                </a>
-              </div>
             </>
           )}
         </section>

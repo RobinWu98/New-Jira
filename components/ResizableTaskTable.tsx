@@ -49,6 +49,20 @@ function getSavedWidths(storageKey: string, fallback: number[]) {
   }
 }
 
+function normalizeWidths(saved: number[], fallback: number[]) {
+  const total = fallback.reduce((sum, width) => sum + width, 0);
+  const widths = saved.map((value, index) => (Number.isFinite(value) ? clampWidth(Number(value)) : fallback[index]));
+  const currentTotal = widths.reduce((sum, width) => sum + width, 0);
+  if (currentTotal === total) {
+    return widths;
+  }
+
+  const delta = total - currentTotal;
+  const lastIndex = widths.length - 1;
+  widths[lastIndex] = clampWidth(widths[lastIndex] + delta);
+  return widths;
+}
+
 export function ResizableTaskTable({
   ariaLabel,
   children,
@@ -66,7 +80,7 @@ export function ResizableTaskTable({
   const [hasLoadedSavedWidths, setHasLoadedSavedWidths] = useState(false);
 
   useEffect(() => {
-    setSizes(getSavedWidths(storageKey, defaultWidths));
+    setSizes(normalizeWidths(getSavedWidths(storageKey, defaultWidths), defaultWidths));
     setHasLoadedSavedWidths(true);
   }, [defaultWidths, storageKey]);
 
@@ -82,13 +96,37 @@ export function ResizableTaskTable({
     () => ({
       sizes,
       resizeColumn: (index: number, width: number) => {
-        setSizes((current) => current.map((size, currentIndex) => (currentIndex === index ? clampWidth(width) : size)));
+        setSizes((current) => {
+          const neighborIndex = index < current.length - 1 ? index + 1 : index - 1;
+          if (neighborIndex < 0) {
+            return current;
+          }
+
+          const startWidth = current[index];
+          const neighborWidth = current[neighborIndex];
+          const targetWidth = clampWidth(width);
+          const delta = targetWidth - startWidth;
+          const adjustedNeighborWidth = clampWidth(neighborWidth - delta);
+
+          if (adjustedNeighborWidth !== neighborWidth - delta) {
+            const actualDelta = neighborWidth - adjustedNeighborWidth;
+            const adjustedTargetWidth = clampWidth(startWidth + actualDelta);
+            return current.map((size, currentIndex) =>
+              currentIndex === index ? adjustedTargetWidth : currentIndex === neighborIndex ? adjustedNeighborWidth : size
+            );
+          }
+
+          return current.map((size, currentIndex) =>
+            currentIndex === index ? targetWidth : currentIndex === neighborIndex ? adjustedNeighborWidth : size
+          );
+        });
       }
     }),
     [sizes]
   );
   const style = {
-    "--task-table-grid": sizes.map((size) => `${size}px`).join(" ")
+    "--task-table-grid": sizes.map((size) => `${size}px`).join(" "),
+    "--task-table-width": `${sizes.reduce((sum, size) => sum + size, 0)}px`
   } as CSSProperties;
 
   return (

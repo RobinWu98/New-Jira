@@ -10,7 +10,7 @@ const SESSION_DAYS = 14;
 const TWO_FACTOR_CHALLENGE_MINUTES = 10;
 const TWO_FACTOR_TRUST_DAYS = 30;
 
-export type UserRole = "admin" | "user";
+export type UserRole = "admin" | "manager" | "staff";
 
 export type User = {
   id: string;
@@ -18,6 +18,7 @@ export type User = {
   email: string;
   role: UserRole;
   category: string | null;
+  archived_at?: Date | string | null;
 };
 
 export async function createSession(userId: string) {
@@ -121,12 +122,13 @@ export async function getTwoFactorChallengeUser() {
   }
 
   const result = await query<User>(
-    `SELECT users.id, users.name, users.email, users.role, users.category
+    `SELECT users.id, users.name, users.email, users.role, users.category, users.archived_at
      FROM two_factor_challenges
      JOIN users ON users.id = two_factor_challenges.user_id
      WHERE two_factor_challenges.token_hash = $1
        AND two_factor_challenges.expires_at > now()
        AND users.two_factor_enabled = true
+       AND users.archived_at IS NULL
      LIMIT 1`,
     [hashToken(token)]
   );
@@ -166,10 +168,12 @@ export async function getCurrentUser(): Promise<User | null> {
   }
 
   const result = await query<User>(
-    `SELECT users.id, users.name, users.email, users.role, users.category
+    `SELECT users.id, users.name, users.email, users.role, users.category, users.archived_at
      FROM sessions
      JOIN users ON users.id = sessions.user_id
-     WHERE sessions.token_hash = $1 AND sessions.expires_at > now()
+     WHERE sessions.token_hash = $1
+       AND sessions.expires_at > now()
+       AND users.archived_at IS NULL
      LIMIT 1`,
     [hashToken(token)]
   );
@@ -191,6 +195,78 @@ export async function requireAdmin() {
   const user = await requireUser();
 
   if (user.role !== "admin") {
+    redirect("/profile");
+  }
+
+  return user;
+}
+
+export function canManageUsers(user: User) {
+  return user.role === "admin";
+}
+
+export function canCreateProject(user: User) {
+  return user.role === "admin" || user.role === "manager";
+}
+
+export function canManageProject(user: User) {
+  return user.role === "admin";
+}
+
+export function canCreateTask(user: User) {
+  return user.role === "admin" || user.role === "manager";
+}
+
+export function canManageTask(user: User) {
+  return user.role === "admin" || user.role === "manager";
+}
+
+export function canCreateSubtask() {
+  return true;
+}
+
+export function canChangeTaskStatus() {
+  return true;
+}
+
+export function canCommentMention() {
+  return true;
+}
+
+export async function requireCreateProject() {
+  const user = await requireUser();
+
+  if (!canCreateProject(user)) {
+    redirect("/profile");
+  }
+
+  return user;
+}
+
+export async function requireManageProject() {
+  const user = await requireUser();
+
+  if (!canManageProject(user)) {
+    redirect("/profile");
+  }
+
+  return user;
+}
+
+export async function requireCreateTask() {
+  const user = await requireUser();
+
+  if (!canCreateTask(user)) {
+    redirect("/profile");
+  }
+
+  return user;
+}
+
+export async function requireManageTask() {
+  const user = await requireUser();
+
+  if (!canManageTask(user)) {
     redirect("/profile");
   }
 

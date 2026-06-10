@@ -6,32 +6,37 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT,
   email CITEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'user',
+  role TEXT NOT NULL DEFAULT 'staff',
   category TEXT,
   two_factor_enabled BOOLEAN NOT NULL DEFAULT false,
   two_factor_secret TEXT,
   two_factor_pending_secret TEXT,
   two_factor_confirmed_at TIMESTAMPTZ,
+  archived_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'staff';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS category TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_secret TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_pending_secret TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_confirmed_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE users DROP COLUMN IF EXISTS two_factor_pin_hash;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 
 UPDATE users
 SET category = 'Business'
 WHERE category IS NULL OR category NOT IN ('IT', 'Sales', 'Support', 'Business');
 
 UPDATE users
-SET role = 'user'
-WHERE role NOT IN ('admin', 'user');
+SET role = 'staff'
+WHERE role = 'user' OR role NOT IN ('admin', 'manager', 'staff');
+
+ALTER TABLE users ALTER COLUMN role SET DEFAULT 'staff';
 
 ALTER TABLE users ALTER COLUMN category SET DEFAULT 'Business';
 ALTER TABLE users ALTER COLUMN category SET NOT NULL;
@@ -45,7 +50,7 @@ BEGIN
   ) THEN
     ALTER TABLE users
       ADD CONSTRAINT users_role_check
-      CHECK (role IN ('admin', 'user'));
+      CHECK (role IN ('admin', 'manager', 'staff'));
   END IF;
 
   IF NOT EXISTS (
@@ -96,6 +101,7 @@ CREATE TABLE IF NOT EXISTS projects (
   ddl DATE NOT NULL,
   owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'active',
+  archived_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -109,6 +115,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   due_date DATE,
   priority TEXT NOT NULL DEFAULT 'medium',
   status TEXT NOT NULL DEFAULT 'todo',
+  archived_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -122,6 +129,7 @@ CREATE TABLE IF NOT EXISTS subtasks (
   due_date DATE,
   priority TEXT NOT NULL DEFAULT 'medium',
   status TEXT NOT NULL DEFAULT 'todo',
+  archived_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -142,6 +150,16 @@ CREATE TABLE IF NOT EXISTS subtask_comments (
   body TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS work_item_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  subtask_id UUID REFERENCES subtasks(id) ON DELETE CASCADE,
+  actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -222,6 +240,9 @@ END $$;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to_id UUID REFERENCES users(id) ON DELETE RESTRICT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_date DATE;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE subtasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 
 UPDATE tasks
 SET start_date = projects.start_date
@@ -284,6 +305,8 @@ CREATE INDEX IF NOT EXISTS subtasks_assigned_to_id_idx ON subtasks(assigned_to_i
 CREATE INDEX IF NOT EXISTS subtasks_due_date_idx ON subtasks(due_date);
 CREATE INDEX IF NOT EXISTS task_comments_task_id_idx ON task_comments(task_id);
 CREATE INDEX IF NOT EXISTS subtask_comments_subtask_id_idx ON subtask_comments(subtask_id);
+CREATE INDEX IF NOT EXISTS work_item_logs_task_id_created_at_idx ON work_item_logs(task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS work_item_logs_subtask_id_created_at_idx ON work_item_logs(subtask_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS notifications_user_id_created_at_idx ON notifications(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS notifications_user_id_read_at_idx ON notifications(user_id, read_at);
 CREATE INDEX IF NOT EXISTS two_factor_challenges_user_id_idx ON two_factor_challenges(user_id);
@@ -293,16 +316,16 @@ CREATE INDEX IF NOT EXISTS two_factor_trusted_sessions_user_id_idx ON two_factor
 INSERT INTO users (name, email, password_hash, role, category)
 VALUES
   ('Jordan Lee', 'admin@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'admin', 'Business'),
-  ('Ava Chen', 'ava.chen@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'IT'),
-  ('Liam Patel', 'liam.patel@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Sales'),
-  ('Mia Rodriguez', 'mia.rodriguez@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Support'),
-  ('Noah Williams', 'noah.williams@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Business'),
-  ('Sophia Nguyen', 'sophia.nguyen@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'IT'),
-  ('Ethan Brooks', 'ethan.brooks@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Sales'),
-  ('Olivia Martin', 'olivia.martin@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Support'),
-  ('Lucas Brown', 'lucas.brown@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Business'),
-  ('Emma Wilson', 'emma.wilson@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'IT'),
-  ('James Miller', 'james.miller@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'user', 'Sales')
+  ('Ava Chen', 'ava.chen@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'manager', 'IT'),
+  ('Liam Patel', 'liam.patel@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'manager', 'Sales'),
+  ('Mia Rodriguez', 'mia.rodriguez@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'staff', 'Support'),
+  ('Noah Williams', 'noah.williams@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'manager', 'Business'),
+  ('Sophia Nguyen', 'sophia.nguyen@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'staff', 'IT'),
+  ('Ethan Brooks', 'ethan.brooks@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'staff', 'Sales'),
+  ('Olivia Martin', 'olivia.martin@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'staff', 'Support'),
+  ('Lucas Brown', 'lucas.brown@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'staff', 'Business'),
+  ('Emma Wilson', 'emma.wilson@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'staff', 'IT'),
+  ('James Miller', 'james.miller@example.com', '$2a$12$OxGpAxD9R2QQhCHKNIOJfO9l7dZTDxr5WusTuHDB0p.ehEdjMWXaS', 'staff', 'Sales')
 ON CONFLICT (email) DO UPDATE
 SET name = EXCLUDED.name,
     role = EXCLUDED.role,

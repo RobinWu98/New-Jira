@@ -1,5 +1,6 @@
 import { DisableTwoFactorForm, TwoFactorSetupForm } from "@/components/AuthForms";
 import { AppFrame } from "@/components/AppFrame";
+import { PageHeader } from "@/components/PageHeader";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -14,14 +15,12 @@ export default async function TwoFactorSettingsPage() {
 
   return (
     <AppFrame>
-      <header className="masthead">
-        <h1>Svida Job Tracker</h1>
-        <p>Protect sign-in with an authenticator app.</p>
+      <PageHeader title="Svida Job Tracker" subtitle="Protect sign-in with an authenticator app.">
         <nav className="nav">
           <a href="/dashboard">Account Home</a>
           <a href="/settings/password">Change Password</a>
         </nav>
-      </header>
+      </PageHeader>
       <section className="panel">
         <h2>Two-Factor Authentication</h2>
         <div className={enabled ? "notice success" : "notice"}>

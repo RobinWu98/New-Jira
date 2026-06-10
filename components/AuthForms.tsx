@@ -3,6 +3,8 @@
 import { useActionState, useEffect, useState } from "react";
 import {
   type AuthActionState,
+  adminArchiveUserAction,
+  adminUpdateUserAction,
   beginTwoFactorSetupAction,
   changePasswordAction,
   completeInvitedRegistrationAction,
@@ -13,6 +15,7 @@ import {
   loginAction,
   registerAction,
   resetPasswordAction,
+  updateUserProfileAction,
   verifyLoginTwoFactorAction
 } from "@/lib/actions";
 import { SubmitButton } from "./FormStatus";
@@ -124,6 +127,13 @@ export function AdminCreateUserForm() {
           <option value="Business">Business</option>
         </select>
       </div>
+      <div className="form-row">
+        <label htmlFor="admin-role">Permission</label>
+        <select id="admin-role" name="role" defaultValue="staff">
+          <option value="staff">Staff</option>
+          <option value="manager">Manager</option>
+        </select>
+      </div>
       <div className="button-row">
         <SubmitButton>Send Registration Email</SubmitButton>
       </div>
@@ -149,6 +159,214 @@ export function AdminCreateUserModal() {
               </button>
             </div>
             <AdminCreateUserForm />
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+export function AdminUpdateUserForm({
+  user,
+  showRole = true
+}: {
+  user: { id: string; name: string | null; email: string; role: string; category: string | null };
+  showRole?: boolean;
+}) {
+  const [state, action] = useActionState(adminUpdateUserAction, initialState);
+
+  return (
+    <form action={action} className="admin-user-edit-form">
+      <Feedback state={state} />
+      <input name="userId" type="hidden" value={user.id} />
+      <label className="sr-only" htmlFor={`${user.id}-admin-name`}>
+        Name
+      </label>
+      <input id={`${user.id}-admin-name`} name="name" type="text" defaultValue={user.name ?? ""} required />
+      <label className="sr-only" htmlFor={`${user.id}-admin-category`}>
+        Department
+      </label>
+      <select id={`${user.id}-admin-category`} name="category" defaultValue={user.category ?? "Business"}>
+        <option value="IT">IT</option>
+        <option value="Sales">Sales</option>
+        <option value="Support">Support</option>
+        <option value="Business">Business</option>
+      </select>
+      {showRole ? (
+        user.role === "admin" ? (
+          <>
+            <label className="sr-only" htmlFor={`${user.id}-admin-role`}>
+              Permission
+            </label>
+            <div className="readonly-field">{user.role}</div>
+            <input name="role" type="hidden" value={user.role} />
+          </>
+        ) : (
+          <>
+            <label className="sr-only" htmlFor={`${user.id}-admin-role`}>
+              Permission
+            </label>
+            <select id={`${user.id}-admin-role`} name="role" defaultValue={user.role === "manager" ? "manager" : "staff"}>
+              <option value="staff">Staff</option>
+              <option value="manager">Manager</option>
+            </select>
+          </>
+        )
+      ) : null}
+      <SubmitButton>Save</SubmitButton>
+    </form>
+  );
+}
+
+export function AdminArchiveUserForm({ userId, role }: { userId: string; role: string }) {
+  const [state, action] = useActionState(adminArchiveUserAction, initialState);
+
+  if (role === "admin") {
+    return null;
+  }
+
+  return (
+    <form action={action} className="inline-action-form">
+      <Feedback state={state} />
+      <input name="userId" type="hidden" value={userId} />
+      <button className="button danger" type="submit">
+        Archive
+      </button>
+    </form>
+  );
+}
+
+function ProfileForm({
+  user
+}: {
+  user: { category: string | null; email: string; name: string | null; role: string };
+}) {
+  const [state, action] = useActionState(updateUserProfileAction, initialState);
+
+  return (
+    <form action={action}>
+      <Feedback state={state} />
+      <div className="form-row">
+        <label htmlFor="profile-name">Name</label>
+        <input id="profile-name" name="name" type="text" defaultValue={user.name ?? ""} required />
+      </div>
+      <div className="form-row">
+        <label htmlFor="profile-email">Email</label>
+        <input id="profile-email" name="email" type="email" defaultValue={user.email} required />
+      </div>
+      <div className="form-row">
+        <label htmlFor="profile-category">Department</label>
+        <select id="profile-category" name="category" defaultValue={user.category ?? "Business"}>
+          <option value="IT">IT</option>
+          <option value="Sales">Sales</option>
+          <option value="Support">Support</option>
+          <option value="Business">Business</option>
+        </select>
+      </div>
+          <div className="button-row">
+        <SubmitButton>Update Profile</SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+export function ProfileEditModal({
+  user
+}: {
+  user: { category: string | null; email: string; name: string | null; role: string };
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <>
+      <button className="button" type="button" onClick={() => setIsOpen(true)}>
+        Edit Profile
+      </button>
+      {isOpen ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setIsOpen(false)}>
+          <div className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="edit-profile-title" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 id="edit-profile-title">Edit Profile</h2>
+              </div>
+              <button className="button secondary" type="button" onClick={() => setIsOpen(false)}>
+                Close
+              </button>
+            </div>
+            <ProfileForm user={user} />
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+export function AdminUsersTable({
+  users
+}: {
+  users: Array<{ id: string; name: string | null; email: string; role: string; category: string | null }>;
+}) {
+  const [selectedUser, setSelectedUser] = useState<{
+    id: string;
+    name: string | null;
+    email: string;
+    role: string;
+    category: string | null;
+  } | null>(null);
+
+  return (
+    <>
+      <div className="users-table" role="table" aria-label="Current users">
+        <div className="users-table-row users-table-head" role="row">
+          <strong role="columnheader">Name</strong>
+          <strong role="columnheader">Email</strong>
+          <strong role="columnheader">Department</strong>
+          <strong role="columnheader">Level</strong>
+          <strong role="columnheader">Archive</strong>
+        </div>
+        {users.map((user) => (
+          <div
+            className="users-table-row clickable-row"
+            role="row"
+            tabIndex={0}
+            key={user.id}
+            onClick={() => setSelectedUser(user)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setSelectedUser(user);
+              }
+            }}
+          >
+            <span role="cell">{user.name || "No name"}</span>
+            <span role="cell">{user.email}</span>
+            <span role="cell">{user.category || "Unassigned"}</span>
+            <span role="cell">{user.role}</span>
+            <span role="cell" onClick={(event) => event.stopPropagation()}>
+              <AdminArchiveUserForm userId={user.id} role={user.role} />
+            </span>
+          </div>
+        ))}
+      </div>
+      {selectedUser ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setSelectedUser(null)}>
+          <div
+            className="modal-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`edit-user-${selectedUser.id}-title`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <h2 id={`edit-user-${selectedUser.id}-title`}>Edit User</h2>
+                <p className="small">Change user details and assign a manager or staff role.</p>
+              </div>
+              <button className="button secondary" type="button" onClick={() => setSelectedUser(null)}>
+                Close
+              </button>
+            </div>
+            <AdminUpdateUserForm user={selectedUser} showRole={true} />
           </div>
         </div>
       ) : null}

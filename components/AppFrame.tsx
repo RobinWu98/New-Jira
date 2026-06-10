@@ -1,6 +1,7 @@
 import { logoutAction } from "@/lib/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
+import MakeTablesResizable from "./MakeTablesResizable";
 
 type ProjectNavRow = {
   id: string;
@@ -58,6 +59,7 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
     query<ProjectNavRow>(
       `SELECT id, name, status
        FROM projects
+       WHERE archived_at IS NULL
        ORDER BY ddl ASC, created_at DESC`
     ),
     user
@@ -74,6 +76,7 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
 
   return (
     <main className="page app-frame">
+      <MakeTablesResizable />
       <nav className="topbar" aria-label="Global navigation">
         <div className="topbar-left">
           <a className="topbar-icon-link" href="/main-page" aria-label="Homepage" title="Homepage">

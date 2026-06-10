@@ -1,5 +1,6 @@
 import { AppFrame } from "@/components/AppFrame";
-import { TaskDetailModal, type UserOption } from "@/components/ProjectForms";
+import { PageHeader } from "@/components/PageHeader";
+import { TaskDetailModal, type TaskLogData, type UserOption } from "@/components/ProjectForms";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -25,11 +26,14 @@ type TeamTaskRow = {
   task_status: string;
 };
 
-type ProjectTaskGroup = {
-  projectId: string;
-  projectName: string;
-  projectStatus: string;
-  tasks: TeamTaskRow[];
+type LogRow = {
+  action: string;
+  actor_email: string | null;
+  actor_name: string | null;
+  body: string;
+  created_at: Date | string;
+  id: string;
+  work_item_id: string;
 };
 
 function formatLabel(value: string) {
@@ -49,29 +53,56 @@ function formatOptionalDate(value: Date | string | null) {
   return value ? formatDate(value) : "No due date";
 }
 
-function groupTasksByProject(tasks: TeamTaskRow[]) {
-  const groups = new Map<string, ProjectTaskGroup>();
+function formatDateTime(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
 
-  for (const task of tasks) {
-    const group = groups.get(task.project_id);
-
-    if (group) {
-      group.tasks.push(task);
-      continue;
-    }
-
-    groups.set(task.project_id, {
-      projectId: task.project_id,
-      projectName: task.project_name,
-      projectStatus: task.project_status,
-      tasks: [task]
-    });
-  }
-
-  return Array.from(groups.values());
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
 }
 
-function toTaskDetailData(task: TeamTaskRow, assignedTo: string, mentionUsers: UserOption[]) {
+function isOverdue(task: TeamTaskRow) {
+  if (!task.task_due_date || task.task_status === "done") {
+    return false;
+  }
+
+  const dueDate = task.task_due_date instanceof Date ? task.task_due_date : new Date(`${task.task_due_date}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return dueDate < today;
+}
+
+function getFocusTask(tasks: TeamTaskRow[]) {
+  return tasks.find((task) => task.task_status === "in_progress") ?? tasks.find((task) => task.task_status !== "done");
+}
+
+function toLogData(log: LogRow): TaskLogData {
+  return {
+    id: log.id,
+    actor: log.actor_name || log.actor_email || "System",
+    action: log.action,
+    body: log.body,
+    createdAt: formatDateTime(log.created_at)
+  };
+}
+
+function groupLogs(logs: LogRow[]) {
+  const groups = new Map<string, TaskLogData[]>();
+
+  for (const log of logs) {
+    const existing = groups.get(log.work_item_id) ?? [];
+    existing.push(toLogData(log));
+    groups.set(log.work_item_id, existing);
+  }
+
+  return groups;
+}
+
+function toTaskDetailData(task: TeamTaskRow, assignedTo: string, mentionUsers: UserOption[], logs: TaskLogData[]) {
   return {
     id: task.task_id,
     projectId: task.project_id,
@@ -84,6 +115,7 @@ function toTaskDetailData(task: TeamTaskRow, assignedTo: string, mentionUsers: U
     priority: task.task_priority,
     status: task.task_status,
     comments: [],
+    logs,
     mentionUsers
   };
 }
@@ -95,6 +127,7 @@ export default async function TeamPage() {
     query<TeamMemberRow>(
       `SELECT id, name, email::text AS email, category, role, created_at
        FROM users
+       WHERE archived_at IS NULL
        ORDER BY name NULLS LAST, email`
     ),
     query<TeamTaskRow>(
@@ -112,19 +145,42 @@ export default async function TeamPage() {
        FROM users
        JOIN tasks ON tasks.assigned_to_id = users.id
        JOIN projects ON projects.id = tasks.project_id
+       WHERE users.archived_at IS NULL
+         AND tasks.archived_at IS NULL
+         AND projects.archived_at IS NULL
        ORDER BY
          users.name NULLS LAST,
          users.email,
          CASE projects.status WHEN 'active' THEN 0 ELSE 1 END,
+         CASE tasks.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 ELSE 2 END,
          tasks.due_date ASC NULLS LAST,
-         projects.name,
          CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
-         CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+         projects.name,
          tasks.created_at DESC`
     )
   ]);
 
   const tasksByUser = new Map<string, TeamTaskRow[]>();
+  const taskIds = tasksResult.rows.map((task) => task.task_id);
+  const logsResult = taskIds.length
+    ? await query<LogRow>(
+        `SELECT
+           work_item_logs.id,
+           work_item_logs.task_id AS work_item_id,
+           users.name AS actor_name,
+           users.email::text AS actor_email,
+           work_item_logs.action,
+           work_item_logs.body,
+           work_item_logs.created_at
+         FROM work_item_logs
+         LEFT JOIN users ON users.id = work_item_logs.actor_id
+         WHERE work_item_logs.task_id = ANY($1::uuid[])
+           AND work_item_logs.subtask_id IS NULL
+         ORDER BY work_item_logs.created_at ASC`,
+        [taskIds]
+      )
+    : { rows: [] };
+  const logsByTask = groupLogs(logsResult.rows);
   const mentionUsers = membersResult.rows.map((member) => ({
     id: member.id,
     label: member.name ? `${member.name} (${member.email})` : member.email,
@@ -137,70 +193,100 @@ export default async function TeamPage() {
     tasksByUser.set(task.user_id, existingTasks);
   }
 
-  return (
-    <AppFrame shellClassName="project-shell">
-      <header className="masthead">
-        <h1>Team</h1>
-      </header>
-      <section className="panel">
-        <div className="section-toolbar">
-          <h2>Team Workload</h2>
-          <a className="button secondary" href="/main-page">
-            Back
-          </a>
-        </div>
-        <div className="team-block-list">
-          {membersResult.rows.map((member, index) => {
-            const memberTasks = tasksByUser.get(member.id) ?? [];
-            const projectGroups = groupTasksByProject(memberTasks);
-            const remainingCount = memberTasks.filter((task) => task.task_status !== "done").length;
-            const memberName = member.name || member.email;
+  const teamSummary = {
+    active: tasksResult.rows.filter((task) => task.task_status !== "done").length,
+    inProgress: tasksResult.rows.filter((task) => task.task_status === "in_progress").length,
+    overdue: tasksResult.rows.filter(isOverdue).length
+  };
 
-            return (
-              <details className="team-member-block" key={member.id} open={index === 0}>
-                <summary className="team-member-summary">
-                  <span>
-                    <strong>{memberName}</strong>
-                    <small>{member.category || "Unassigned"} · {member.role}</small>
-                  </span>
-                  <span>{memberTasks.length} tasks / {remainingCount} remaining</span>
-                </summary>
-                {projectGroups.length ? (
-                  <div className="team-project-list">
-                    {projectGroups.map((project) => (
-                      <div className="team-project-block" key={project.projectId}>
-                        <div className="team-project-name">
-                          <a href={`/projects/${project.projectId}`}>{project.projectName}</a>
-                          <span className={`status-pill status-${project.projectStatus}`}>
-                            {formatLabel(project.projectStatus)}
-                          </span>
-                        </div>
-                        <div className="team-task-list">
-                          {project.tasks.map((task) => (
-                            <div className="team-task-row" key={task.task_id}>
-                              <span>
-                                <TaskDetailModal task={toTaskDetailData(task, memberName, mentionUsers)} />
-                              </span>
-                              <span>{formatOptionalDate(task.task_due_date)}</span>
-                              <span className={`task-pill priority-${task.task_priority}`}>
-                                {formatLabel(task.task_priority)}
-                              </span>
-                              <span className={`task-pill task-status-${task.task_status}`}>
-                                {formatLabel(task.task_status)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="notice">No assigned tasks.</div>
-                )}
-              </details>
-            );
-          })}
+  return (
+    <AppFrame shellClassName="team-shell">
+      <PageHeader title="Team" />
+      <section className="panel team-overview-panel">
+        <div className="section-toolbar">
+          <h2>Team Snapshot</h2>
         </div>
+        <div className="team-summary-strip" aria-label="Team workload summary">
+          <div>
+            <strong>{membersResult.rows.length}</strong>
+            <span>People</span>
+          </div>
+          <div>
+            <strong>{teamSummary.active}</strong>
+            <span>Active Tasks</span>
+          </div>
+          <div>
+            <strong>{teamSummary.inProgress}</strong>
+            <span>In Progress</span>
+          </div>
+          <div>
+            <strong>{teamSummary.overdue}</strong>
+            <span>Overdue</span>
+          </div>
+        </div>
+      </section>
+      <section className="team-board" aria-label="Team workload by person">
+        {membersResult.rows.map((member) => {
+          const memberTasks = tasksByUser.get(member.id) ?? [];
+          const remainingCount = memberTasks.filter((task) => task.task_status !== "done").length;
+          const doneCount = memberTasks.filter((task) => task.task_status === "done").length;
+          const inProgressCount = memberTasks.filter((task) => task.task_status === "in_progress").length;
+          const overdueCount = memberTasks.filter(isOverdue).length;
+          const focusTask = getFocusTask(memberTasks);
+          const memberName = member.name || member.email;
+
+          return (
+            <article className="team-member-card" key={member.id}>
+              <header className="team-member-card-header">
+                <div>
+                  <h2>{memberName}</h2>
+                  <p>{member.category || "Unassigned"} · {member.role}</p>
+                </div>
+                <span className={`team-load-badge${overdueCount ? " is-alert" : remainingCount ? "" : " is-clear"}`}>
+                  {remainingCount} active
+                </span>
+              </header>
+              <div className="team-member-stats">
+                <span>{inProgressCount} in progress</span>
+                <span>{doneCount} done</span>
+                <span>{overdueCount} overdue</span>
+              </div>
+              <div className="team-focus-line">
+                <strong>Now</strong>
+                {focusTask ? (
+                  <span>
+                    <TaskDetailModal
+                      task={toTaskDetailData(focusTask, memberName, mentionUsers, logsByTask.get(focusTask.task_id) ?? [])}
+                    />
+                    <small>{focusTask.project_name}</small>
+                  </span>
+                ) : (
+                  <span>No active task</span>
+                )}
+              </div>
+              {memberTasks.length ? (
+                <div className="team-task-list">
+                  {memberTasks.slice(0, 5).map((task) => (
+                    <div className="team-task-row" key={task.task_id}>
+                      <span>
+                        <TaskDetailModal
+                          task={toTaskDetailData(task, memberName, mentionUsers, logsByTask.get(task.task_id) ?? [])}
+                        />
+                        <small>{task.project_name}</small>
+                      </span>
+                      <span>{formatOptionalDate(task.task_due_date)}</span>
+                      <span className={`task-pill priority-${task.task_priority}`}>{formatLabel(task.task_priority)}</span>
+                      <span className={`task-pill task-status-${task.task_status}`}>{formatLabel(task.task_status)}</span>
+                    </div>
+                  ))}
+                  {memberTasks.length > 5 ? <div className="team-more-link">{memberTasks.length - 5} more tasks</div> : null}
+                </div>
+              ) : (
+                <div className="team-empty-state">No assigned tasks</div>
+              )}
+            </article>
+          );
+        })}
       </section>
     </AppFrame>
   );

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { TwoFactorLoginForm } from "@/components/AuthForms";
+import { PageHeader } from "@/components/PageHeader";
 import { getCurrentUser, getTwoFactorChallengeUser } from "@/lib/auth";
 
 export default async function TwoFactorPage() {
@@ -18,9 +19,7 @@ export default async function TwoFactorPage() {
   return (
     <main className="page">
       <div className="shell login-shell">
-        <header className="masthead">
-          <h1>Svida Job Tracker</h1>
-        </header>
+        <PageHeader title="Svida Job Tracker" />
         <section className="panel auth-panel">
           <h2>Two-Factor Check</h2>
           <TwoFactorLoginForm />

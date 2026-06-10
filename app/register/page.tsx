@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { RegisterForm } from "@/components/AuthForms";
+import { PageHeader } from "@/components/PageHeader";
 import { getCurrentUser } from "@/lib/auth";
 
 export default async function RegisterPage() {
@@ -12,10 +13,10 @@ export default async function RegisterPage() {
   return (
     <main className="page">
       <div className="shell">
-        <header className="masthead">
-          <h1>Svida Job Tracker</h1>
-          <p>Open a desk file for your job search. Password sign-in is active now; stronger verification can be added later.</p>
-        </header>
+        <PageHeader
+          title="Svida Job Tracker"
+          subtitle="Open a desk file for your job search. Password sign-in is active now; stronger verification can be added later."
+        />
         <section className="panel">
           <h2>Create Account</h2>
           <div className="notice">Use an email address you can keep. This will be the account record for every future application note.</div>

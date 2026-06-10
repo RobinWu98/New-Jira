@@ -1,15 +1,17 @@
 import { notFound } from "next/navigation";
 import { AppFrame } from "@/components/AppFrame";
+import { PageHeader } from "@/components/PageHeader";
 import {
   CreateTaskModal,
   TaskWithSubtasks,
   type SubtaskListItemData,
   type TaskCommentData,
   type TaskListItemData,
-  type TaskFormData
+  type TaskFormData,
+  type TaskLogData
 } from "@/components/ProjectForms";
 import { ResizableTaskColumnHeader, ResizableTaskTable } from "@/components/ResizableTaskTable";
-import { requireUser } from "@/lib/auth";
+import { canCreateTask, canManageTask, requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
 type ProjectDetailPageProps = {
@@ -63,12 +65,24 @@ type SubtaskRow = {
 };
 
 type CommentRow = {
+  author_id: string | null;
   id: string;
   work_item_id: string;
   author_name: string | null;
   author_email: string | null;
   body: string;
   created_at: Date | string;
+};
+
+type LogRow = {
+  action: string;
+  actor_email: string | null;
+  actor_name: string | null;
+  body: string;
+  created_at: Date | string;
+  id: string;
+  subtask_id: string | null;
+  task_id: string;
 };
 
 type TaskPriorityFilter = "all" | "high" | "medium" | "low";
@@ -212,7 +226,8 @@ function toTaskListItemData(
   projectId: string,
   projectName: string,
   task: TaskRow,
-  comments: TaskCommentData[]
+  comments: TaskCommentData[],
+  logs: TaskLogData[]
 ): TaskListItemData {
   return {
     ...toTaskFormData(projectId, task),
@@ -220,14 +235,16 @@ function toTaskListItemData(
     startLabel: formatOptionalDate(task.start_date),
     dueLabel: task.due_date ? formatDate(task.due_date) : "No due date",
     projectName,
-    comments
+    comments,
+    logs
   };
 }
 
 function toSubtaskListItemData(
   projectId: string,
   subtask: SubtaskRow,
-  comments: TaskCommentData[]
+  comments: TaskCommentData[],
+  logs: TaskLogData[]
 ): SubtaskListItemData {
   return {
     id: subtask.id,
@@ -242,26 +259,65 @@ function toSubtaskListItemData(
     assignedTo: subtask.assigned_to_name || subtask.assigned_to_email,
     startLabel: formatOptionalDate(subtask.start_date),
     dueLabel: subtask.due_date ? formatDate(subtask.due_date) : "No due date",
-    comments
+    comments,
+    logs
   };
 }
 
-function toCommentData(comment: CommentRow): TaskCommentData {
+function isUserMentioned(body: string, user: { email: string; name: string | null }) {
+  const normalizedBody = body.toLowerCase();
+  const emailMention = `@${user.email.toLowerCase()}`;
+  const nameMention = user.name ? `@${user.name.toLowerCase()}` : "";
+
+  return normalizedBody.includes(emailMention) || Boolean(nameMention && normalizedBody.includes(nameMention));
+}
+
+function toCommentData(comment: CommentRow, user: { email: string; id: string; name: string | null }): TaskCommentData {
   return {
     id: comment.id,
     author: comment.author_name || comment.author_email || "Deleted user",
     body: comment.body,
-    createdAt: formatDateTime(comment.created_at)
+    createdAt: formatDateTime(comment.created_at),
+    isMine: comment.author_id === user.id,
+    mentionsMe: comment.author_id !== user.id && isUserMentioned(comment.body, user)
   };
 }
 
-function groupComments(comments: CommentRow[]) {
+function groupComments(comments: CommentRow[], user: { email: string; id: string; name: string | null }) {
   const groups = new Map<string, TaskCommentData[]>();
 
   for (const comment of comments) {
     const existing = groups.get(comment.work_item_id) ?? [];
-    existing.push(toCommentData(comment));
+    existing.push(toCommentData(comment, user));
     groups.set(comment.work_item_id, existing);
+  }
+
+  return groups;
+}
+
+function toLogData(log: LogRow): TaskLogData {
+  return {
+    id: log.id,
+    actor: log.actor_name || log.actor_email || "System",
+    action: log.action,
+    body: log.body,
+    createdAt: formatDateTime(log.created_at)
+  };
+}
+
+function groupLogs(logs: LogRow[], useSubtaskId = false) {
+  const groups = new Map<string, TaskLogData[]>();
+
+  for (const log of logs) {
+    const workItemId = useSubtaskId ? log.subtask_id : log.task_id;
+
+    if (!workItemId) {
+      continue;
+    }
+
+    const existing = groups.get(workItemId) ?? [];
+    existing.push(toLogData(log));
+    groups.set(workItemId, existing);
   }
 
   return groups;
@@ -270,13 +326,21 @@ function groupComments(comments: CommentRow[]) {
 function groupSubtasksByTask(
   subtasks: SubtaskRow[],
   projectId: string,
-  subtaskCommentsById: Map<string, TaskCommentData[]>
+  subtaskCommentsById: Map<string, TaskCommentData[]>,
+  subtaskLogsById: Map<string, TaskLogData[]>
 ) {
   const groups = new Map<string, SubtaskListItemData[]>();
 
   for (const subtask of subtasks) {
     const existing = groups.get(subtask.task_id) ?? [];
-    existing.push(toSubtaskListItemData(projectId, subtask, subtaskCommentsById.get(subtask.id) ?? []));
+    existing.push(
+      toSubtaskListItemData(
+        projectId,
+        subtask,
+        subtaskCommentsById.get(subtask.id) ?? [],
+        subtaskLogsById.get(subtask.id) ?? []
+      )
+    );
     groups.set(subtask.task_id, existing);
   }
 
@@ -305,7 +369,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     notFound();
   }
 
-  const [projectResult, tasksResult, subtasksResult, taskCommentsResult, subtaskCommentsResult, usersResult] =
+  const [projectResult, tasksResult, subtasksResult, taskCommentsResult, subtaskCommentsResult, logsResult, usersResult] =
     await Promise.all([
     query<ProjectRow>(
       `SELECT
@@ -320,6 +384,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
        FROM projects
        LEFT JOIN users ON users.id = projects.owner_id
        WHERE projects.id = $1
+         AND projects.archived_at IS NULL
        LIMIT 1`,
       [id]
     ),
@@ -338,6 +403,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
        FROM tasks
        JOIN users ON users.id = tasks.assigned_to_id
        WHERE tasks.project_id = $1
+         AND tasks.archived_at IS NULL
        ORDER BY
          CASE tasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
          tasks.due_date ASC NULLS LAST,
@@ -362,6 +428,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
        JOIN tasks ON tasks.id = subtasks.task_id
        JOIN users ON users.id = subtasks.assigned_to_id
        WHERE tasks.project_id = $1
+         AND tasks.archived_at IS NULL
+         AND subtasks.archived_at IS NULL
        ORDER BY
          subtasks.due_date ASC NULLS LAST,
          CASE subtasks.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
@@ -373,6 +441,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         `SELECT
            task_comments.id,
            task_comments.task_id AS work_item_id,
+           task_comments.author_id,
            users.name AS author_name,
            users.email::text AS author_email,
            task_comments.body,
@@ -381,6 +450,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
          JOIN tasks ON tasks.id = task_comments.task_id
          LEFT JOIN users ON users.id = task_comments.author_id
          WHERE tasks.project_id = $1
+           AND tasks.archived_at IS NULL
          ORDER BY task_comments.created_at ASC`,
         [id]
       ),
@@ -388,6 +458,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         `SELECT
            subtask_comments.id,
            subtask_comments.subtask_id AS work_item_id,
+           subtask_comments.author_id,
            users.name AS author_name,
            users.email::text AS author_email,
            subtask_comments.body,
@@ -397,10 +468,32 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
          JOIN tasks ON tasks.id = subtasks.task_id
          LEFT JOIN users ON users.id = subtask_comments.author_id
          WHERE tasks.project_id = $1
+           AND tasks.archived_at IS NULL
+           AND subtasks.archived_at IS NULL
          ORDER BY subtask_comments.created_at ASC`,
         [id]
       ),
-      query<UserRow>("SELECT id, name, email::text AS email, created_at FROM users ORDER BY name NULLS LAST, email")
+      query<LogRow>(
+        `SELECT
+           work_item_logs.id,
+           work_item_logs.task_id,
+           work_item_logs.subtask_id,
+           users.name AS actor_name,
+           users.email::text AS actor_email,
+           work_item_logs.action,
+           work_item_logs.body,
+           work_item_logs.created_at
+         FROM work_item_logs
+         JOIN tasks ON tasks.id = work_item_logs.task_id
+         LEFT JOIN users ON users.id = work_item_logs.actor_id
+         WHERE tasks.project_id = $1
+           AND tasks.archived_at IS NULL
+         ORDER BY work_item_logs.created_at ASC`,
+        [id]
+      ),
+      query<UserRow>(
+        "SELECT id, name, email::text AS email, created_at FROM users WHERE archived_at IS NULL ORDER BY name NULLS LAST, email"
+      )
     ]);
 
   const project = projectResult.rows[0];
@@ -414,11 +507,15 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
     label: user.name ? `${user.name} (${user.email})` : user.email,
     createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at)
   }));
-  const canModify = user.role === "admin";
+  const userCanCreateTask = canCreateTask(user);
+  const userCanManageTask = canManageTask(user);
+  const canShowTaskActions = true;
   const selectedAssignee = selectedAssigneeId ? users.find((assignee) => assignee.id === selectedAssigneeId) : null;
-  const taskCommentsById = groupComments(taskCommentsResult.rows);
-  const subtaskCommentsById = groupComments(subtaskCommentsResult.rows);
-  const subtasksByTask = groupSubtasksByTask(subtasksResult.rows, project.id, subtaskCommentsById);
+  const taskCommentsById = groupComments(taskCommentsResult.rows, user);
+  const subtaskCommentsById = groupComments(subtaskCommentsResult.rows, user);
+  const taskLogsById = groupLogs(logsResult.rows.filter((log) => !log.subtask_id));
+  const subtaskLogsById = groupLogs(logsResult.rows.filter((log) => Boolean(log.subtask_id)), true);
+  const subtasksByTask = groupSubtasksByTask(subtasksResult.rows, project.id, subtaskCommentsById, subtaskLogsById);
   const baseFilteredTasks = tasksResult.rows
     .filter((task) => (selectedAssigneeId ? task.assigned_to_id === selectedAssigneeId : true))
     .filter((task) => (selectedPriority === "all" ? true : task.priority === selectedPriority))
@@ -480,17 +577,12 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
 
   return (
     <AppFrame shellClassName="project-shell" currentProjectId={project.id}>
-      <header className="masthead">
-        <h1>{project.name}</h1>
-      </header>
+      <PageHeader title={project.name} />
       <section className="panel">
         <div className="section-toolbar">
           <h2>Tasks View</h2>
           <div className="toolbar-actions">
-            <CreateTaskModal projectId={project.id} users={users} />
-            <a className="button secondary" href="/projects">
-              Back
-            </a>
+            {userCanCreateTask ? <CreateTaskModal projectId={project.id} users={users} /> : null}
           </div>
         </div>
         {project.description ? <p className="project-summary">{project.description}</p> : null}
@@ -609,24 +701,31 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <ResizableTaskTable
           ariaLabel={`${project.name} tasks`}
           className="project-task-table"
-          defaultWidths={canModify ? [280, 200, 110, 120, 110, 126, 180] : [280, 200, 110, 120, 110, 126]}
-          storageKey={`project-task-table-widths-${canModify ? "editable" : "readonly"}`}
+          defaultWidths={canShowTaskActions ? [280, 200, 110, 120, 110, 126, 180] : [280, 200, 110, 120, 110, 126]}
+          storageKey={`project-task-table-widths-${canShowTaskActions ? "editable" : "readonly"}`}
         >
-          <div className={`tasks-table-row tasks-table-head task-detail-row${canModify ? "" : " task-detail-row-readonly"}`} role="row">
+          <div className={`tasks-table-row tasks-table-head task-detail-row${canShowTaskActions ? "" : " task-detail-row-readonly"}`} role="row">
             <ResizableTaskColumnHeader index={0}>Task</ResizableTaskColumnHeader>
             <ResizableTaskColumnHeader index={1}>Assigned To</ResizableTaskColumnHeader>
             <ResizableTaskColumnHeader index={2}>Start</ResizableTaskColumnHeader>
             <ResizableTaskColumnHeader index={3}>Due Date</ResizableTaskColumnHeader>
             <ResizableTaskColumnHeader index={4}>Priority</ResizableTaskColumnHeader>
             <ResizableTaskColumnHeader index={5}>Status</ResizableTaskColumnHeader>
-            {canModify ? <ResizableTaskColumnHeader index={6}>Actions</ResizableTaskColumnHeader> : null}
+            {canShowTaskActions ? <ResizableTaskColumnHeader index={6}>Actions</ResizableTaskColumnHeader> : null}
           </div>
           {filteredTasks.map((task) => (
             <TaskWithSubtasks
-              canModify={canModify}
+              canManageTask={userCanManageTask}
+              canUpdateStatus
               key={task.id}
               subtasks={subtasksByTask.get(task.id) ?? []}
-              task={toTaskListItemData(project.id, project.name, task, taskCommentsById.get(task.id) ?? [])}
+              task={toTaskListItemData(
+                project.id,
+                project.name,
+                task,
+                taskCommentsById.get(task.id) ?? [],
+                taskLogsById.get(task.id) ?? []
+              )}
               users={users}
             />
           ))}

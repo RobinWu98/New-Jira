@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useActionState, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   type AuthActionState,
   createProjectAction,
@@ -8,14 +8,17 @@ import {
   createSubtaskAction,
   createTaskCommentAction,
   createTaskAction,
-  deleteProjectAction,
-  deleteSubtaskAction,
-  deleteTaskAction,
+  archiveProjectAction,
+  archiveSubtaskAction,
+  archiveTaskAction,
   updateProjectAction,
+  updateSubtaskStatusAction,
   updateSubtaskAction,
+  updateTaskStatusAction,
   updateTaskAction
 } from "@/lib/actions";
 import { SubmitButton } from "./FormStatus";
+import InlinePicker from "./InlinePicker";
 
 export type UserOption = {
   id: string;
@@ -62,6 +65,7 @@ export type TaskListItemData = TaskFormData & {
   dueLabel: string;
   projectName: string;
   comments?: TaskCommentData[];
+  logs?: TaskLogData[];
 };
 
 export type SubtaskListItemData = SubtaskFormData & {
@@ -69,6 +73,7 @@ export type SubtaskListItemData = SubtaskFormData & {
   startLabel: string;
   dueLabel: string;
   comments?: TaskCommentData[];
+  logs?: TaskLogData[];
 };
 
 export type TaskDetailData = {
@@ -84,12 +89,23 @@ export type TaskDetailData = {
   priority: string;
   status: string;
   comments?: TaskCommentData[];
+  logs?: TaskLogData[];
   mentionUsers?: UserOption[];
 };
 
 export type TaskCommentData = {
   id: string;
   author: string;
+  body: string;
+  createdAt: string;
+  isMine?: boolean;
+  mentionsMe?: boolean;
+};
+
+export type TaskLogData = {
+  id: string;
+  actor: string;
+  action: string;
   body: string;
   createdAt: string;
 };
@@ -145,6 +161,8 @@ function Modal({
 }
 
 export function TaskDetailModal({ task }: { task: TaskDetailData }) {
+  const [activeTab, setActiveTab] = useState<"message" | "log">("message");
+
   return (
     <Modal title={task.title} trigger={task.title} triggerClassName="task-title-trigger">
       <div className="task-detail-modal">
@@ -176,7 +194,27 @@ export function TaskDetailModal({ task }: { task: TaskDetailData }) {
             <span className={`task-pill task-status-${task.status}`}>{formatTaskLabel(task.status)}</span>
           </div>
         </div>
-        <TaskComments task={task} />
+        <div className="task-detail-tabs" role="tablist" aria-label="Task conversation and activity">
+          <button
+            aria-selected={activeTab === "message"}
+            className={`task-detail-tab${activeTab === "message" ? " is-active" : ""}`}
+            onClick={() => setActiveTab("message")}
+            role="tab"
+            type="button"
+          >
+            Message
+          </button>
+          <button
+            aria-selected={activeTab === "log"}
+            className={`task-detail-tab${activeTab === "log" ? " is-active" : ""}`}
+            onClick={() => setActiveTab("log")}
+            role="tab"
+            type="button"
+          >
+            Log
+          </button>
+        </div>
+        {activeTab === "message" ? <TaskComments task={task} /> : <TaskLog logs={task.logs ?? []} />}
       </div>
     </Modal>
   );
@@ -190,7 +228,10 @@ function TaskComments({ task }: { task: TaskDetailData }) {
       <div className="task-message-list" aria-label={`${task.title} messages`}>
         {comments.length ? (
           comments.map((comment) => (
-            <article className="task-message" key={comment.id}>
+            <article
+              className={`task-message${comment.isMine ? " is-mine" : ""}${comment.mentionsMe ? " mentions-me" : ""}`}
+              key={comment.id}
+            >
               <div className="task-message-meta">
                 <strong>{comment.author}</strong>
                 <span>{comment.createdAt}</span>
@@ -207,15 +248,60 @@ function TaskComments({ task }: { task: TaskDetailData }) {
   );
 }
 
+function TaskLog({ logs }: { logs: TaskLogData[] }) {
+  return (
+    <div className="task-log-list" aria-label="Task activity log">
+      {logs.length ? (
+        logs.map((log) => (
+          <article className="task-log-item" key={log.id}>
+            <span className="task-log-dot" aria-hidden="true" />
+            <div>
+              <div className="task-log-meta">
+                <strong>{log.actor}</strong>
+                <span>{log.createdAt}</span>
+              </div>
+              <p>{log.body}</p>
+            </div>
+          </article>
+        ))
+      ) : (
+        <div className="task-message-empty">No activity yet.</div>
+      )}
+    </div>
+  );
+}
+
 function TaskCommentForm({ task }: { task: TaskDetailData }) {
   const [state, action] = useActionState(
     task.type === "task" ? createTaskCommentAction : createSubtaskCommentAction,
     initialState
   );
+  const [resetSignal, setResetSignal] = useState(0);
+  const submittedRef = useRef(false);
   const commentId = `${task.type}-${task.id}-comment`;
 
+  useEffect(() => {
+    if (!submittedRef.current) {
+      return;
+    }
+
+    if (state.error) {
+      submittedRef.current = false;
+      return;
+    }
+
+    setResetSignal((current) => current + 1);
+    submittedRef.current = false;
+  }, [state]);
+
   return (
-    <form action={action} className="task-message-form">
+    <form
+      action={action}
+      className="task-message-form"
+      onSubmit={() => {
+        submittedRef.current = true;
+      }}
+    >
       <Feedback state={state} />
       <input name="projectId" type="hidden" value={task.projectId} />
       <input name="taskId" type="hidden" value={task.type === "task" ? task.id : task.taskId ?? ""} />
@@ -223,7 +309,7 @@ function TaskCommentForm({ task }: { task: TaskDetailData }) {
       <label className="sr-only" htmlFor={commentId}>
         Message
       </label>
-      <MentionTextarea id={commentId} users={task.mentionUsers ?? []} />
+      <MentionTextarea id={commentId} resetSignal={resetSignal} users={task.mentionUsers ?? []} />
       <div className="button-row">
         <SubmitButton>Send</SubmitButton>
       </div>
@@ -252,7 +338,7 @@ function getActiveMention(value: string, cursor: number) {
   };
 }
 
-function MentionTextarea({ id, users }: { id: string; users: UserOption[] }) {
+function MentionTextarea({ id, resetSignal, users }: { id: string; resetSignal: number; users: UserOption[] }) {
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -284,6 +370,12 @@ function MentionTextarea({ id, users }: { id: string; users: UserOption[] }) {
   }, [activeMention, users]);
   const showSuggestions = Boolean(activeMention && suggestions.length);
 
+  useEffect(() => {
+    setValue("");
+    setCursor(0);
+    setSelectedIndex(0);
+  }, [resetSignal]);
+
   function updateCursor(element: HTMLTextAreaElement) {
     setCursor(element.selectionStart);
     setSelectedIndex(0);
@@ -312,7 +404,7 @@ function MentionTextarea({ id, users }: { id: string; users: UserOption[] }) {
       <textarea
         id={id}
         name="body"
-        placeholder="Write a message..."
+        placeholder="send your message"
         ref={textareaRef}
         rows={4}
         value={value}
@@ -485,15 +577,15 @@ export function EditProjectModal({
   );
 }
 
-export function DeleteProjectForm({ projectId }: { projectId: string }) {
-  const [state, action] = useActionState(deleteProjectAction, initialState);
+export function ArchiveProjectForm({ projectId }: { projectId: string }) {
+  const [state, action] = useActionState(archiveProjectAction, initialState);
 
   return (
     <form action={action}>
       <Feedback state={state} />
       <input name="projectId" type="hidden" value={projectId} />
       <button className="button danger" type="submit">
-        Delete
+        Archive
       </button>
     </form>
   );
@@ -732,8 +824,8 @@ export function EditSubtaskModal({
   );
 }
 
-export function DeleteSubtaskForm({ projectId, taskId, subtaskId }: { projectId: string; taskId: string; subtaskId: string }) {
-  const [state, action] = useActionState(deleteSubtaskAction, initialState);
+export function ArchiveSubtaskForm({ projectId, taskId, subtaskId }: { projectId: string; taskId: string; subtaskId: string }) {
+  const [state, action] = useActionState(archiveSubtaskAction, initialState);
 
   return (
     <form action={action}>
@@ -742,14 +834,14 @@ export function DeleteSubtaskForm({ projectId, taskId, subtaskId }: { projectId:
       <input name="taskId" type="hidden" value={taskId} />
       <input name="subtaskId" type="hidden" value={subtaskId} />
       <button className="button danger" type="submit">
-        Delete
+        Archive
       </button>
     </form>
   );
 }
 
-export function DeleteTaskForm({ projectId, taskId }: { projectId: string; taskId: string }) {
-  const [state, action] = useActionState(deleteTaskAction, initialState);
+export function ArchiveTaskForm({ projectId, taskId }: { projectId: string; taskId: string }) {
+  const [state, action] = useActionState(archiveTaskAction, initialState);
 
   return (
     <form action={action}>
@@ -757,7 +849,47 @@ export function DeleteTaskForm({ projectId, taskId }: { projectId: string; taskI
       <input name="projectId" type="hidden" value={projectId} />
       <input name="taskId" type="hidden" value={taskId} />
       <button className="button danger" type="submit">
-        Delete
+        Archive
+      </button>
+    </form>
+  );
+}
+
+function WorkItemStatusForm({
+  currentStatus,
+  projectId,
+  subtaskId,
+  taskId,
+  type
+}: {
+  currentStatus: string;
+  projectId: string;
+  subtaskId?: string;
+  taskId: string;
+  type: "task" | "subtask";
+}) {
+  const [state, action] = useActionState(
+    type === "task" ? updateTaskStatusAction : updateSubtaskStatusAction,
+    initialState
+  );
+  const statusId = `${type}-${subtaskId ?? taskId}-status-update`;
+
+  return (
+    <form action={action} className="status-update-form">
+      <Feedback state={state} />
+      <input name="projectId" type="hidden" value={projectId} />
+      <input name="taskId" type="hidden" value={taskId} />
+      {type === "subtask" ? <input name="subtaskId" type="hidden" value={subtaskId} /> : null}
+      <label className="sr-only" htmlFor={statusId}>
+        Status
+      </label>
+      <select id={statusId} name="status" defaultValue={currentStatus}>
+        <option value="todo">Todo</option>
+        <option value="in_progress">In Progress</option>
+        <option value="done">Done</option>
+      </select>
+      <button className="button secondary" type="submit">
+        Update
       </button>
     </form>
   );
@@ -767,14 +899,17 @@ export function TaskWithSubtasks({
   task,
   subtasks,
   users,
-  canModify
+  canManageTask,
+  canUpdateStatus
 }: {
   task: TaskListItemData;
   subtasks: SubtaskListItemData[];
   users: UserOption[];
-  canModify: boolean;
+  canManageTask: boolean;
+  canUpdateStatus: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(true);
+  const showActions = canManageTask || canUpdateStatus;
   const taskDetail = {
     id: task.id,
     projectId: task.projectId,
@@ -787,12 +922,13 @@ export function TaskWithSubtasks({
     priority: task.priority,
     status: task.status,
     comments: task.comments,
+    logs: task.logs,
     mentionUsers: users
   };
 
   return (
     <>
-      <div className={`tasks-table-row task-detail-row${canModify ? "" : " task-detail-row-readonly"}`} role="row">
+      <div className={`tasks-table-row task-detail-row${showActions ? "" : " task-detail-row-readonly"}`} role="row">
         <span className="task-title-cell" role="cell">
           <button
             aria-expanded={isOpen}
@@ -816,15 +952,29 @@ export function TaskWithSubtasks({
         <span role="cell">{task.startLabel}</span>
         <span role="cell">{task.dueLabel}</span>
         <span role="cell">
-          <span className={`task-pill priority-${task.priority}`}>{formatTaskLabel(task.priority)}</span>
+          <InlinePicker
+            kind="priority"
+            type="task"
+            current={task.priority}
+            projectId={task.projectId}
+            taskId={task.id}
+            title={task.title}
+            assignedToId={task.assignedToId}
+            startDate={task.startDate}
+            dueDate={task.dueDate}
+          />
         </span>
         <span role="cell">
-          <span className={`task-pill task-status-${task.status}`}>{formatTaskLabel(task.status)}</span>
+          <InlinePicker kind="status" type="task" current={task.status} projectId={task.projectId} taskId={task.id} />
         </span>
-        {canModify ? (
+        {showActions ? (
           <span role="cell" className="table-actions">
-            <EditTaskModal projectId={task.projectId} users={users} task={task} />
-            <DeleteTaskForm projectId={task.projectId} taskId={task.id} />
+            {canManageTask ? (
+              <>
+                <EditTaskModal projectId={task.projectId} users={users} task={task} />
+                <ArchiveTaskForm projectId={task.projectId} taskId={task.id} />
+              </>
+            ) : null}
           </span>
         ) : null}
       </div>
@@ -843,12 +993,13 @@ export function TaskWithSubtasks({
             priority: subtask.priority,
             status: subtask.status,
             comments: subtask.comments,
+            logs: subtask.logs,
             mentionUsers: users
           };
 
           return (
             <div
-              className={`tasks-table-row task-detail-row subtask-table-row${canModify ? "" : " task-detail-row-readonly"}`}
+              className={`tasks-table-row task-detail-row subtask-table-row${showActions ? "" : " task-detail-row-readonly"}`}
               key={subtask.id}
               role="row"
             >
@@ -859,15 +1010,30 @@ export function TaskWithSubtasks({
               <span role="cell">{subtask.startLabel}</span>
               <span role="cell">{subtask.dueLabel}</span>
               <span role="cell">
-                <span className={`task-pill priority-${subtask.priority}`}>{formatTaskLabel(subtask.priority)}</span>
+                <InlinePicker
+                  kind="priority"
+                  type="subtask"
+                  current={subtask.priority}
+                  projectId={subtask.projectId}
+                  taskId={subtask.taskId}
+                  subtaskId={subtask.id}
+                  title={subtask.title}
+                  assignedToId={subtask.assignedToId}
+                  startDate={subtask.startDate}
+                  dueDate={subtask.dueDate}
+                />
               </span>
               <span role="cell">
-                <span className={`task-pill task-status-${subtask.status}`}>{formatTaskLabel(subtask.status)}</span>
+                <InlinePicker kind="status" type="subtask" current={subtask.status} projectId={subtask.projectId} taskId={subtask.taskId} subtaskId={subtask.id} />
               </span>
-              {canModify ? (
+              {showActions ? (
                 <span className="table-actions" role="cell">
-                  <EditSubtaskModal projectId={task.projectId} taskId={task.id} users={users} subtask={subtask} />
-                  <DeleteSubtaskForm projectId={task.projectId} taskId={task.id} subtaskId={subtask.id} />
+                  {canManageTask ? (
+                    <>
+                      <EditSubtaskModal projectId={task.projectId} taskId={task.id} users={users} subtask={subtask} />
+                      <ArchiveSubtaskForm projectId={task.projectId} taskId={task.id} subtaskId={subtask.id} />
+                    </>
+                  ) : null}
                 </span>
               ) : null}
             </div>

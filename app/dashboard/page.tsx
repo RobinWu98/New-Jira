@@ -1,6 +1,7 @@
 import { AppFrame } from "@/components/AppFrame";
+import { PageHeader } from "@/components/PageHeader";
 import { DashboardChart } from "@/components/DashboardChart";
-import { TaskDetailModal, type TaskCommentData, type UserOption } from "@/components/ProjectForms";
+import { TaskDetailModal, type TaskCommentData, type TaskLogData, type UserOption } from "@/components/ProjectForms";
 import { ResizableTaskColumnHeader, ResizableTaskTable } from "@/components/ResizableTaskTable";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
@@ -25,12 +26,23 @@ type TaskRow = {
 };
 
 type CommentRow = {
+  author_id: string | null;
   id: string;
   work_item_id: string;
   author_name: string | null;
   author_email: string | null;
   body: string;
   created_at: Date | string;
+};
+
+type LogRow = {
+  action: string;
+  actor_email: string | null;
+  actor_name: string | null;
+  body: string;
+  created_at: Date | string;
+  id: string;
+  work_item_id: string;
 };
 
 type UserRow = {
@@ -103,28 +115,60 @@ function formatLabel(value: string) {
     .join(" ");
 }
 
-function toCommentData(comment: CommentRow): TaskCommentData {
+function isUserMentioned(body: string, user: { email: string; name: string | null }) {
+  const normalizedBody = body.toLowerCase();
+  const emailMention = `@${user.email.toLowerCase()}`;
+  const nameMention = user.name ? `@${user.name.toLowerCase()}` : "";
+
+  return normalizedBody.includes(emailMention) || Boolean(nameMention && normalizedBody.includes(nameMention));
+}
+
+function toCommentData(comment: CommentRow, user: { email: string; id: string; name: string | null }): TaskCommentData {
   return {
     id: comment.id,
     author: comment.author_name || comment.author_email || "Deleted user",
     body: comment.body,
-    createdAt: formatDateTime(comment.created_at)
+    createdAt: formatDateTime(comment.created_at),
+    isMine: comment.author_id === user.id,
+    mentionsMe: comment.author_id !== user.id && isUserMentioned(comment.body, user)
   };
 }
 
-function groupComments(comments: CommentRow[]) {
+function groupComments(comments: CommentRow[], user: { email: string; id: string; name: string | null }) {
   const groups = new Map<string, TaskCommentData[]>();
 
   for (const comment of comments) {
     const existing = groups.get(comment.work_item_id) ?? [];
-    existing.push(toCommentData(comment));
+    existing.push(toCommentData(comment, user));
     groups.set(comment.work_item_id, existing);
   }
 
   return groups;
 }
 
-function toTaskDetailData(task: TaskRow, comments: TaskCommentData[], mentionUsers: UserOption[]) {
+function toLogData(log: LogRow): TaskLogData {
+  return {
+    id: log.id,
+    actor: log.actor_name || log.actor_email || "System",
+    action: log.action,
+    body: log.body,
+    createdAt: formatDateTime(log.created_at)
+  };
+}
+
+function groupLogs(logs: LogRow[]) {
+  const groups = new Map<string, TaskLogData[]>();
+
+  for (const log of logs) {
+    const existing = groups.get(log.work_item_id) ?? [];
+    existing.push(toLogData(log));
+    groups.set(log.work_item_id, existing);
+  }
+
+  return groups;
+}
+
+function toTaskDetailData(task: TaskRow, comments: TaskCommentData[], logs: TaskLogData[], mentionUsers: UserOption[]) {
   return {
     id: task.id,
     projectId: task.project_id,
@@ -137,6 +181,7 @@ function toTaskDetailData(task: TaskRow, comments: TaskCommentData[], mentionUse
     priority: task.priority,
     status: task.status,
     comments,
+    logs,
     mentionUsers
   };
 }
@@ -208,11 +253,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
          users.email::text AS assigned_to_email,
          tasks.start_date,
          tasks.due_date
-       FROM tasks
-       JOIN projects ON projects.id = tasks.project_id
-       JOIN users ON users.id = tasks.assigned_to_id
-       WHERE tasks.assigned_to_id = $1
-         ${windowClause}
+     FROM tasks
+     JOIN projects ON projects.id = tasks.project_id
+     JOIN users ON users.id = tasks.assigned_to_id
+     WHERE tasks.assigned_to_id = $1
+       AND tasks.archived_at IS NULL
+       AND projects.archived_at IS NULL
+       ${windowClause}
        ORDER BY
          CASE projects.status WHEN 'active' THEN 0 ELSE 1 END,
          tasks.due_date ASC NULLS LAST,
@@ -221,7 +268,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
          tasks.created_at DESC`,
       values
     ),
-    query<UserRow>("SELECT id, name, email::text AS email, created_at FROM users ORDER BY name NULLS LAST, email")
+    query<UserRow>(
+      "SELECT id, name, email::text AS email, created_at FROM users WHERE archived_at IS NULL ORDER BY name NULLS LAST, email"
+    )
   ]);
 
   const tasks = tasksResult.rows;
@@ -236,6 +285,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         `SELECT
            task_comments.id,
            task_comments.task_id AS work_item_id,
+           task_comments.author_id,
            users.name AS author_name,
            users.email::text AS author_email,
            task_comments.body,
@@ -247,7 +297,26 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         [taskIds]
       )
     : { rows: [] };
-  const commentsByTask = groupComments(commentsResult.rows);
+  const logsResult = taskIds.length
+    ? await query<LogRow>(
+        `SELECT
+           work_item_logs.id,
+           work_item_logs.task_id AS work_item_id,
+           users.name AS actor_name,
+           users.email::text AS actor_email,
+           work_item_logs.action,
+           work_item_logs.body,
+           work_item_logs.created_at
+         FROM work_item_logs
+         LEFT JOIN users ON users.id = work_item_logs.actor_id
+         WHERE work_item_logs.task_id = ANY($1::uuid[])
+           AND work_item_logs.subtask_id IS NULL
+         ORDER BY work_item_logs.created_at ASC`,
+        [taskIds]
+      )
+    : { rows: [] };
+  const commentsByTask = groupComments(commentsResult.rows, user);
+  const logsByTask = groupLogs(logsResult.rows);
   const summary = getSummary(tasks);
   const rangeText =
     range === "all"
@@ -266,10 +335,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   return (
     <AppFrame shellClassName="dashboard-shell">
-      <header className="masthead">
-        <h1>My Dashboard</h1>
-        <p>{user.name || user.email}</p>
-      </header>
+      <PageHeader title="My Dashboard" subtitle={user.name || user.email} />
       <section className="panel">
         <div className="section-toolbar">
           <h2>Workload Summary</h2>
@@ -341,7 +407,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             {tasks.map((task) => (
               <div className="tasks-table-row dashboard-task-row" role="row" key={task.id}>
                 <span role="cell">
-                  <TaskDetailModal task={toTaskDetailData(task, commentsByTask.get(task.id) ?? [], mentionUsers)} />
+                  <TaskDetailModal
+                    task={toTaskDetailData(task, commentsByTask.get(task.id) ?? [], logsByTask.get(task.id) ?? [], mentionUsers)}
+                  />
                 </span>
                 <span role="cell">{task.project_name}</span>
                 <span role="cell">{formatOptionalDate(task.due_date)}</span>

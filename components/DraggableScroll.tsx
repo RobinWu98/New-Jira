@@ -12,7 +12,7 @@ export function DraggableScroll({ children }: { children: ReactNode }) {
       className={`draggable-scroll${isDragging ? " is-dragging" : ""}`}
       ref={ref}
       onPointerDown={(event) => {
-        if (!ref.current || event.button !== 0) {
+        if (!ref.current || event.button !== 0 || event.pointerType !== "mouse") {
           return;
         }
 

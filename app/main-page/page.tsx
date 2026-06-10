@@ -13,22 +13,20 @@ export default async function MainPage() {
 
   return (
     <AppFrame shellClassName="main-page-shell">
-      <section className="panel">
-        <nav className="main-actions" aria-label="Main navigation">
-          <a className="main-action main-action-dashboard" href="/dashboard">
-            <img src="/main-nav/dashboard.png" alt="" aria-hidden="true" />
-            <span>My Dashboard</span>
-          </a>
-          <a className="main-action main-action-projects" href="/projects">
-            <img src="/main-nav/projects.png" alt="" aria-hidden="true" />
-            <span>Projects</span>
-          </a>
-          <a className="main-action main-action-team" href="/team">
-            <img src="/main-nav/team.png" alt="" aria-hidden="true" />
-            <span>Team</span>
-          </a>
-        </nav>
-      </section>
+      <nav className="main-actions" aria-label="Main navigation">
+        <a className="main-action main-action-dashboard" href="/dashboard">
+          <img src="/main-nav/dashboard.png" alt="" aria-hidden="true" />
+          <span>My Dashboard</span>
+        </a>
+        <a className="main-action main-action-projects" href="/projects">
+          <img src="/main-nav/projects.png" alt="" aria-hidden="true" />
+          <span>Projects</span>
+        </a>
+        <a className="main-action main-action-team" href="/team">
+          <img src="/main-nav/team.png" alt="" aria-hidden="true" />
+          <span>Team</span>
+        </a>
+      </nav>
       {needsTwoFactorSetup ? (
         <div className="modal-backdrop" role="presentation">
           <div className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="two-factor-required-title">

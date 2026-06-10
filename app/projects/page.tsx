@@ -1,12 +1,13 @@
 import { AppFrame } from "@/components/AppFrame";
+import { PageHeader } from "@/components/PageHeader";
 import { DraggableScroll } from "@/components/DraggableScroll";
 import {
   CreateProjectModal,
-  DeleteProjectForm,
+  ArchiveProjectForm,
   EditProjectModal,
   type ProjectFormData
 } from "@/components/ProjectForms";
-import { requireUser } from "@/lib/auth";
+import { canCreateProject, canManageProject, requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
 type UserRow = {
@@ -166,7 +167,7 @@ function ProjectTable({
                 {canModify ? (
                   <>
                     <EditProjectModal users={users} currentUserId={currentUserId} project={toProjectFormData(project)} />
-                    <DeleteProjectForm projectId={project.id} />
+                    <ArchiveProjectForm projectId={project.id} />
                   </>
                 ) : (
                   <a className="button secondary" href={`/projects/${project.id}`}>
@@ -196,7 +197,9 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
   const queryText = (params.q ?? "").trim();
 
   const [usersResult, projectsResult] = await Promise.all([
-    query<UserRow>("SELECT id, name, email::text AS email FROM users ORDER BY name NULLS LAST, email"),
+    query<UserRow>(
+      "SELECT id, name, email::text AS email FROM users WHERE archived_at IS NULL ORDER BY name NULLS LAST, email"
+    ),
     query<ProjectRow>(
       `SELECT
          projects.id,
@@ -212,7 +215,8 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
          projects.created_at
        FROM projects
        LEFT JOIN users ON users.id = projects.owner_id
-       LEFT JOIN tasks ON tasks.project_id = projects.id
+       LEFT JOIN tasks ON tasks.project_id = projects.id AND tasks.archived_at IS NULL
+       WHERE projects.archived_at IS NULL
        GROUP BY projects.id, users.name, users.email
        ORDER BY CASE projects.status WHEN 'active' THEN 0 ELSE 1 END, projects.ddl ASC, projects.created_at DESC`
     )
@@ -258,20 +262,16 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
     done: filteredProjects.filter((project) => normalizeProjectStatus(project.status) === "done"),
     all: filteredProjects
   } satisfies Record<ProjectStatusFilter, ProjectRow[]>;
-  const canModify = user.role === "admin";
+  const userCanCreateProject = canCreateProject(user);
+  const userCanManageProject = canManageProject(user);
 
   return (
     <AppFrame shellClassName="project-shell">
-      <header className="masthead">
-        <h1>Projects</h1>
-      </header>
+      <PageHeader title="Projects" />
       <section className="panel">
         <div className="section-toolbar">
           <div className="toolbar-actions">
-            {canModify ? <CreateProjectModal users={users} currentUserId={user.id} /> : null}
-            <a className="button secondary" href="/main-page">
-              Back
-            </a>
+            {userCanCreateProject ? <CreateProjectModal users={users} currentUserId={user.id} /> : null}
           </div>
         </div>
         <form className="filter-bar project-filter-bar" action="/projects">
@@ -313,7 +313,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
           projects={projectGroups[selectedStatus]}
           users={users}
           currentUserId={user.id}
-          canModify={canModify}
+          canModify={userCanManageProject}
           searchForm={
             <form className="table-title-search" action="/projects">
               <input name="status" type="hidden" value={selectedStatus} />

@@ -1,5 +1,6 @@
 import { ChangePasswordForm } from "@/components/AuthForms";
 import { AppFrame } from "@/components/AppFrame";
+import { PageHeader } from "@/components/PageHeader";
 import { requireUser } from "@/lib/auth";
 
 export default async function ChangePasswordPage() {
@@ -7,13 +8,11 @@ export default async function ChangePasswordPage() {
 
   return (
     <AppFrame>
-      <header className="masthead">
-        <h1>Svida Job Tracker</h1>
-        <p>Keep the account desk locked. Change your password when it feels stale or exposed.</p>
+      <PageHeader title="Svida Job Tracker" subtitle="Keep the account desk locked. Change your password when it feels stale or exposed.">
         <nav className="nav">
           <a href="/dashboard">Account Home</a>
         </nav>
-      </header>
+      </PageHeader>
       <section className="panel">
         <h2>Change Password</h2>
         <div className="notice">For account safety, enter your current password first.</div>

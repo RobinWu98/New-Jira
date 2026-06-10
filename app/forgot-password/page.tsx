@@ -1,16 +1,14 @@
 import { ForgotPasswordForm } from "@/components/AuthForms";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function ForgotPasswordPage() {
   return (
     <main className="page">
       <div className="shell">
-        <header className="masthead">
-          <h1>Svida Job Tracker</h1>
-          <p>Start a password recovery request. Reset links expire after 30 minutes.</p>
-          <nav className="nav">
-            <a href="/login">Back to Login</a>
-          </nav>
-        </header>
+        <PageHeader
+          title="Svida Job Tracker"
+          subtitle="Start a password recovery request. Reset links expire after 30 minutes."
+        />
         <section className="panel">
           <h2>Forgot Password</h2>
           <div className="notice">Enter your account email and we will send a reset link if the account exists.</div>

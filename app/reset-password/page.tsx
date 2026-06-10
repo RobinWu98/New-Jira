@@ -1,4 +1,5 @@
 import { ResetPasswordForm } from "@/components/AuthForms";
+import { PageHeader } from "@/components/PageHeader";
 
 export default async function ResetPasswordPage({
   searchParams
@@ -10,13 +11,10 @@ export default async function ResetPasswordPage({
   return (
     <main className="page">
       <div className="shell">
-        <header className="masthead">
-          <h1>Svida Job Tracker</h1>
-          <p>File a new password for your account. Reset links are single-purpose and should be used promptly.</p>
-          <nav className="nav">
-            <a href="/login">Back to Login</a>
-          </nav>
-        </header>
+        <PageHeader
+          title="Svida Job Tracker"
+          subtitle="File a new password for your account. Reset links are single-purpose and should be used promptly."
+        />
         <section className="panel">
           <h2>Reset Password</h2>
           {token ? (

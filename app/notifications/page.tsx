@@ -1,4 +1,5 @@
 import { AppFrame } from "@/components/AppFrame";
+import { PageHeader } from "@/components/PageHeader";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
@@ -64,9 +65,7 @@ export default async function NotificationsPage() {
 
   return (
     <AppFrame>
-      <header className="masthead">
-        <h1>Notifications</h1>
-      </header>
+      <PageHeader title="Notifications" />
       <section className="panel">
         <div className="section-toolbar">
           <h2>Inbox</h2>
