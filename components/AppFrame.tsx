@@ -128,7 +128,7 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
             Projects
           </a>
           <ProjectNavGroup
-            title="Active"
+            title="Ongoing"
             status="active"
             projects={activeProjects}
             currentProjectId={currentProjectId}

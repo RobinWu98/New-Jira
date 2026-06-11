@@ -4257,3 +4257,94 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+/* Readability layer: clearer section separation without changing workflows */
+:root {
+  --section-edge-primary: #0c66e4;
+  --section-edge-secondary: #22a06b;
+  --section-edge-warning: #f59e0b;
+  --section-band: #f8fbff;
+  --section-band-warm: #fff8ed;
+  --table-band: #f6f8fb;
+}
+
+.app-content .panel {
+  position: relative;
+  overflow: hidden;
+  border-left: 6px solid var(--section-edge-primary);
+  background:
+    linear-gradient(90deg, rgba(12, 102, 228, 0.045), rgba(255, 255, 255, 0) 34%),
+    var(--paper);
+}
+
+.app-content .panel:nth-of-type(2n) {
+  border-left-color: var(--section-edge-secondary);
+  background:
+    linear-gradient(90deg, rgba(34, 160, 107, 0.05), rgba(255, 255, 255, 0) 34%),
+    var(--paper);
+}
+
+.app-content .panel:nth-of-type(3n) {
+  border-left-color: var(--section-edge-warning);
+  background:
+    linear-gradient(90deg, rgba(245, 158, 11, 0.055), rgba(255, 255, 255, 0) 34%),
+    var(--paper);
+}
+
+.section-toolbar,
+.project-group-toolbar,
+.person-toolbar {
+  border: 1px solid #dfe7f3;
+  border-radius: 8px;
+  background: var(--section-band);
+  padding: 10px 12px;
+}
+
+.project-ant-table-shell,
+.ant-data-table-shell {
+  border: 1px solid #dfe7f3;
+  border-radius: 8px;
+  background: var(--table-band);
+  padding: 12px;
+}
+
+.project-ant-table-toolbar,
+.ant-data-table-toolbar {
+  border-bottom: 1px solid #dfe7f3;
+  padding-bottom: 10px;
+}
+
+.project-ant-table-shell .ant-table,
+.ant-data-table-shell .ant-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.team-member-card,
+.notification-item,
+.overdue-warning,
+.overdue-clear {
+  border-left-width: 6px;
+}
+
+.team-member-card {
+  border-left-color: var(--section-edge-primary);
+}
+
+.team-member-card:nth-child(2n) {
+  border-left-color: var(--section-edge-secondary);
+}
+
+.team-member-card:nth-child(3n) {
+  border-left-color: var(--section-edge-warning);
+}
+
+.team-member-card-header,
+.team-summary-strip {
+  background: var(--section-band);
+}
+
+.meta-grid,
+.table-like {
+  background: var(--section-band-warm);
+}
