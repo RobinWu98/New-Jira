@@ -17,6 +17,7 @@ type TaskRow = {
   id: string;
   project_id: string;
   title: string;
+  description: string | null;
   priority: "low" | "medium" | "high";
   status: "todo" | "in_progress" | "overdue" | "done";
   project_name: string;
@@ -108,6 +109,20 @@ function formatOptionalDate(value: Date | string | null) {
   return value ? formatDate(value) : "No due date";
 }
 
+function calculateOpenDays(value: Date | string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const start = value instanceof Date ? value : new Date(`${value}T00:00:00`);
+  const today = new Date();
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = Math.floor((todayDay.getTime() - startDay.getTime()) / 86_400_000);
+
+  return Math.max(days, 0);
+}
+
 function formatDateTime(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value);
 
@@ -178,6 +193,7 @@ function toTaskDetailData(task: TaskRow, comments: TaskCommentData[], logs: Task
     projectId: task.project_id,
     type: "task" as const,
     title: task.title,
+    description: task.description ?? "",
     projectName: task.project_name,
     assignedTo: task.assigned_to_name || task.assigned_to_email,
     startDate: task.start_date ? formatDate(task.start_date) : "No date",
@@ -207,18 +223,6 @@ function getRangeWindow(range: WorkloadRange) {
   return { start: null, end: null };
 }
 
-function getSummary(tasks: TaskRow[]) {
-  const total = tasks.length;
-  const done = tasks.filter((task) => task.status === "done").length;
-  const inProgress = tasks.filter((task) => task.status === "in_progress").length;
-  const overdue = tasks.filter((task) => task.status === "overdue").length;
-  const todo = tasks.filter((task) => task.status === "todo").length;
-  const remaining = total - done;
-  const highRemaining = tasks.filter((task) => task.priority === "high" && task.status !== "done").length;
-
-  return { total, done, inProgress, todo, remaining, highRemaining, overdue };
-}
-
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const user = await requireUser();
   const params = await searchParams;
@@ -243,6 +247,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
          tasks.id,
          tasks.project_id,
          tasks.title,
+         tasks.description,
          tasks.priority,
          tasks.status,
          projects.name AS project_name,
@@ -270,6 +275,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
          subtasks.id,
          tasks.project_id,
          subtasks.title,
+         NULL::text AS description,
          subtasks.priority,
          subtasks.status,
          projects.name AS project_name,
@@ -303,6 +309,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     id: s.id,
     project_id: s.project_id,
     title: s.title,
+    description: s.description,
     priority: s.priority,
     status: s.status,
     project_name: s.project_name,
@@ -345,16 +352,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     : { rows: [] };
   const commentsByTask = groupComments(commentsResult.rows, user);
   const logsByTask = groupLogs(logsResult.rows);
-  const summary = getSummary(tasks);
-  const rangeText =
-    range === "all"
-      ? "across all assigned projects"
-      : `for ${RANGE_LABELS[range].toLowerCase()}`;
-  const overdueTasks = tasks.filter((task) => task.status === "overdue").slice(0, 3);
   const taskRows: WorkItemAntTableRow[] = tasks.map((task) => ({
     id: task.id,
     title: task.title,
     projectName: task.project_name,
+    openDays: calculateOpenDays(task.start_date),
     startLabel: task.start_date ? formatDate(task.start_date) : "No date",
     dueLabel: formatOptionalDate(task.due_date),
     dueSort: toOptionalDateInput(task.due_date),
@@ -365,10 +367,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   return (
     <AppFrame shellClassName="dashboard-shell">
-      <PageHeader title="My Dashboard" subtitle={user.name || user.email} />
-      <section className="panel workload-panel">
+      <PageHeader title="My Dashboard" subtitle={`Welcome, ${user.name || user.email}`} />
+      <section className="panel">
         <div className="section-toolbar">
-          <h2>Workload</h2>
+          <h2>My tasks ({taskRows.length})</h2>
           <nav className="segmented-nav" aria-label="Dashboard range">
             {(["all", "month", "week"] as WorkloadRange[]).map((option) => (
               <UiButtonLink
@@ -382,65 +384,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             ))}
           </nav>
         </div>
-        <div className="workload-layout">
-          {summary.overdue ? (
-            <aside className="overdue-warning" aria-live="polite">
-              <div>
-                <span className="overdue-warning-label">Overdue warning</span>
-                <strong>
-                  {summary.overdue} overdue {summary.overdue === 1 ? "task" : "tasks"}
-                </strong>
-                <p>
-                  Review these first {rangeText}. Update the due date or move completed work to Done.
-                </p>
-              </div>
-              <ul>
-                {overdueTasks.map((task) => (
-                  <li key={task.id}>
-                    <span>{task.title}</span>
-                    <small>{task.project_name} - Due {formatOptionalDate(task.due_date)}</small>
-                  </li>
-                ))}
-              </ul>
-            </aside>
-          ) : (
-            <aside className="overdue-clear">
-              <strong>No overdue tasks</strong>
-              <span>Your assigned workload is clear of overdue items {rangeText}.</span>
-            </aside>
-          )}
-          <div className="workload-copy">
-            <div className="workload-summary" aria-label="Workload summary">
-              <div className="workload-summary-row is-total">
-                <span>Total</span>
-                <strong>{summary.total}</strong>
-              </div>
-              <div className="workload-summary-row workload-status-todo">
-                <span>Todo</span>
-                <strong>{summary.todo}</strong>
-              </div>
-              <div className="workload-summary-row workload-status-in-progress">
-                <span>In Progress</span>
-                <strong>{summary.inProgress}</strong>
-              </div>
-              <div className="workload-summary-row workload-status-done">
-                <span>Done</span>
-                <strong>{summary.done}</strong>
-              </div>
-              <div className="workload-summary-row workload-status-overdue">
-                <span>Overdue</span>
-                <strong>{summary.overdue}</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section className="panel">
-        <div className="section-toolbar">
-          <h2>Assigned Tasks</h2>
-        </div>
         {taskRows.length ? (
-          <WorkItemsAntTable rows={taskRows} showProject title="Assigned Tasks" />
+          <WorkItemsAntTable
+            enableProjectSort={false}
+            groupByProject
+            rows={taskRows}
+            showProject
+            showOpenDays
+            showResetFilters={false}
+            showStart={false}
+            showToolbarTitle={false}
+            title="Tasks"
+          />
         ) : (
           <div className="notice">No assigned tasks in this range.</div>
         )}

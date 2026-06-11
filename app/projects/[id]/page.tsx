@@ -42,6 +42,7 @@ type UserRow = {
 type TaskRow = {
   id: string;
   title: string;
+  description: string | null;
   start_date: Date | string | null;
   due_date: Date | string | null;
   priority: string;
@@ -226,6 +227,7 @@ function toTaskFormData(projectId: string, task: TaskRow): TaskFormData {
     id: task.id,
     projectId,
     title: task.title,
+    description: task.description ?? "",
     assignedToId: task.assigned_to_id,
     startDate: task.start_date ? toDateInput(task.start_date) : "",
     dueDate: task.due_date ? toDateInput(task.due_date) : "",
@@ -407,6 +409,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       `SELECT
          tasks.id,
          tasks.title,
+         tasks.description,
          tasks.start_date,
          tasks.due_date,
          tasks.priority,

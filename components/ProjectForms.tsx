@@ -1,6 +1,7 @@
 "use client";
 
-import { Button, Space, Table } from "antd";
+import { Button, Dropdown, Input, Popover, Space, Table } from "antd";
+import type { MenuProps } from "antd";
 import type { TableColumnsType, TableProps } from "antd";
 import type { FilterValue, SorterResult } from "antd/es/table/interface";
 import { useActionState, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
@@ -14,6 +15,7 @@ import {
   archiveProjectAction,
   archiveSubtaskAction,
   archiveTaskAction,
+  deleteProjectAction,
   updateProjectAction,
   updateSubtaskStatusAction,
   updateSubtaskAction,
@@ -22,6 +24,7 @@ import {
 } from "@/lib/actions";
 import { SubmitButton } from "./FormStatus";
 import InlinePicker from "./InlinePicker";
+import { useResizableAntColumns } from "./ResizableAntColumns";
 import { PriorityPill, TaskStatusPill, UiButton } from "./UiControls";
 
 export type UserOption = {
@@ -44,6 +47,7 @@ export type TaskFormData = {
   id: string;
   projectId: string;
   title: string;
+  description: string;
   assignedToId: string;
   startDate: string;
   dueDate: string;
@@ -86,6 +90,7 @@ export type TaskDetailData = {
   taskId?: string;
   type: "task" | "subtask";
   title: string;
+  description?: string;
   projectName?: string;
   assignedTo: string;
   startDate: string;
@@ -176,6 +181,12 @@ export function TaskDetailModal({ task }: { task: TaskDetailData }) {
   return (
     <Modal title={task.title} trigger={task.title} triggerClassName="task-title-trigger">
       <div className="task-detail-modal">
+        {task.description ? (
+          <section className="task-detail-description">
+            <strong>Description</strong>
+            <p>{task.description}</p>
+          </section>
+        ) : null}
         <div className="task-detail-meta-grid">
           {task.projectName ? (
             <div>
@@ -575,22 +586,93 @@ export function EditProjectModal({
 }) {
   return (
     <Modal title="Edit Project" trigger="Edit">
+      <ProjectActionMenu project={project} />
       <ProjectForm users={users} currentUserId={currentUserId} project={project} />
     </Modal>
   );
 }
 
-export function ArchiveProjectForm({ projectId }: { projectId: string }) {
-  const [state, action] = useActionState(archiveProjectAction, initialState);
+type ProjectDangerAction = "archive" | "delete";
+
+function ProjectActionMenu({ project }: { project: ProjectFormData }) {
+  const [archiveState, archiveAction] = useActionState(archiveProjectAction, initialState);
+  const [deleteState, deleteAction] = useActionState(deleteProjectAction, initialState);
+  const [pendingAction, setPendingAction] = useState<ProjectDangerAction | null>(null);
+  const [deleteProjectName, setDeleteProjectName] = useState("");
+
+  const closeConfirm = () => {
+    setPendingAction(null);
+    setDeleteProjectName("");
+  };
+  const canDeleteProject = pendingAction !== "delete" || deleteProjectName === project.name;
+  const actionLabel = pendingAction === "delete" ? "Delete" : "Archive";
+  const actionDescription =
+    pendingAction === "delete"
+      ? "This permanently removes the project and its tasks."
+      : "This hides the project from active views.";
+  const menuItems: MenuProps["items"] = [
+    {
+      key: "archive",
+      label: "Archive"
+    },
+    {
+      danger: true,
+      key: "delete",
+      label: "Delete"
+    }
+  ];
+  const confirmContent = pendingAction ? (
+    <div className="project-action-popover">
+      <strong>{`${actionLabel} this project?`}</strong>
+      <p>{actionDescription}</p>
+      {pendingAction === "archive" ? <Feedback state={archiveState} /> : <Feedback state={deleteState} />}
+      <form action={pendingAction === "archive" ? archiveAction : deleteAction}>
+        <input name="projectId" type="hidden" value={project.id} />
+        {pendingAction === "delete" ? (
+          <label className="project-action-confirm-name">
+            <span>
+              Type <strong>{project.name}</strong> to delete this project.
+            </span>
+            <Input
+              autoComplete="off"
+              onChange={(event) => setDeleteProjectName(event.target.value)}
+              placeholder={project.name}
+              value={deleteProjectName}
+            />
+          </label>
+        ) : null}
+        <Space>
+          <Button htmlType="submit" type="primary" danger disabled={!canDeleteProject}>
+            Confirm {actionLabel}
+          </Button>
+          <Button htmlType="button" onClick={closeConfirm}>
+            Cancel
+          </Button>
+        </Space>
+      </form>
+    </div>
+  ) : null;
 
   return (
-    <form action={action}>
-      <Feedback state={state} />
-      <input name="projectId" type="hidden" value={projectId} />
-      <UiButton variant="danger" type="submit">
-        Archive
-      </UiButton>
-    </form>
+    <div className="project-action-menu">
+      <Popover content={confirmContent} open={Boolean(pendingAction)} placement="bottomRight" trigger="click">
+        <Dropdown
+          menu={{
+            items: menuItems,
+            onClick: ({ key }) => {
+              setPendingAction(key as ProjectDangerAction);
+              setDeleteProjectName("");
+            }
+          }}
+          placement="bottomRight"
+          trigger={["click"]}
+        >
+          <Button aria-label="Project actions" className="project-action-trigger" type="default">
+            ...
+          </Button>
+        </Dropdown>
+      </Popover>
+    </div>
   );
 }
 
@@ -618,6 +700,15 @@ function TaskForm({
           type="text"
           defaultValue={task?.title}
           required
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor={`${task?.id ?? "new"}-task-description`}>Description</label>
+        <textarea
+          id={`${task?.id ?? "new"}-task-description`}
+          name="description"
+          defaultValue={task?.description}
+          placeholder="Describe the expected outcome, important context, and next action for this task."
         />
       </div>
       <div className="form-row">
@@ -951,6 +1042,7 @@ export function ProjectTasksAntTable({
       projectId: task.projectId,
       type: "task" as const,
       title: task.title,
+      description: task.description,
       projectName: task.projectName,
       assignedTo: task.assignedTo,
       startDate: task.startLabel,
@@ -997,29 +1089,19 @@ export function ProjectTasksAntTable({
     return <TaskDetailModal task={subtaskDetail} />;
   };
 
-  const columns: TableColumnsType<ProjectTaskAntRow> = [
+  const baseColumns: TableColumnsType<ProjectTaskAntRow> = [
     {
       title: "Task",
       key: "title",
+      width: 260,
       render: (_value, row) => renderTaskDetail(row.task),
       sorter: (left, right) => left.task.title.localeCompare(right.task.title),
       sortOrder: sortedInfo.columnKey === "title" ? sortedInfo.order : null
     },
     {
-      title: "Subtasks",
-      key: "subtasks",
-      render: (_value, row) => (
-        <span className="subtask-count-badge" aria-label={`${row.subtasks.length} subtasks`}>
-          {row.subtasks.length}
-        </span>
-      ),
-      sorter: (left, right) => left.subtasks.length - right.subtasks.length,
-      sortOrder: sortedInfo.columnKey === "subtasks" ? sortedInfo.order : null,
-      width: 110
-    },
-    {
       title: "Assigned To",
       key: "assignedTo",
+      width: 180,
       render: (_value, row) => row.task.assignedTo,
       sorter: (left, right) => left.task.assignedTo.localeCompare(right.task.assignedTo),
       sortOrder: sortedInfo.columnKey === "assignedTo" ? sortedInfo.order : null
@@ -1102,17 +1184,19 @@ export function ProjectTasksAntTable({
       : [])
   ];
 
-  const nestedColumns: TableColumnsType<SubtaskListItemData> = [
+  const baseNestedColumns: TableColumnsType<SubtaskListItemData> = [
     {
       title: "Sub-task",
       dataIndex: "title",
       key: "title",
+      width: 260,
       render: (_title: string, subtask) => renderSubtaskDetail(subtask, rows.find((row) => row.task.id === subtask.taskId)?.task.projectName ?? "")
     },
     {
       title: "Assigned To",
       dataIndex: "assignedTo",
-      key: "assignedTo"
+      key: "assignedTo",
+      width: 180
     },
     {
       title: "Start",
@@ -1178,6 +1262,12 @@ export function ProjectTasksAntTable({
         ]
       : [])
   ];
+  const { columns, scrollX } = useResizableAntColumns(baseColumns, "project-task-ant-table-widths", 92);
+  const { columns: nestedColumns, scrollX: nestedScrollX } = useResizableAntColumns(
+    baseNestedColumns,
+    "project-subtask-ant-table-widths",
+    92
+  );
 
   return (
     <div className="ant-data-table-shell">
@@ -1201,8 +1291,9 @@ export function ProjectTasksAntTable({
                 dataSource={row.subtasks}
                 pagination={false}
                 rowKey="id"
-                scroll={{ x: 760 }}
+                scroll={{ x: nestedScrollX }}
                 size="small"
+                tableLayout="fixed"
               />
             ) : (
               <div className="team-empty-state">No sub-tasks</div>
@@ -1214,8 +1305,9 @@ export function ProjectTasksAntTable({
         pagination={rows.length > 10 ? { pageSize: 10, showSizeChanger: true } : false}
         rowClassName="project-task-ant-row"
         rowKey="key"
-        scroll={{ x: showActions ? 1180 : 980 }}
+        scroll={{ x: scrollX }}
         size="middle"
+        tableLayout="fixed"
       />
     </div>
   );

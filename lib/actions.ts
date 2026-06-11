@@ -80,9 +80,14 @@ function normalizeDateLogValue(value: Date | string | null | undefined) {
   return value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
 }
 
+function defaultTaskDescription(title: string) {
+  return `Review the work needed for "${title}", confirm the expected outcome, and update progress as the task moves forward.`;
+}
+
 function getWorkItemChangeLogs({
   assignedTo,
   current,
+  description,
   dueDate,
   priority,
   startDate,
@@ -94,12 +99,14 @@ function getWorkItemChangeLogs({
     assigned_to_email: string;
     assigned_to_id: string;
     assigned_to_name: string | null;
+    description?: string | null;
     due_date: Date | string | null;
     priority: string;
     start_date: Date | string | null;
     status: string;
     title: string;
   };
+  description?: string;
   dueDate: string;
   priority: string;
   startDate: string;
@@ -112,6 +119,10 @@ function getWorkItemChangeLogs({
 
   if (current.title !== title) {
     logs.push(`Title changed from "${current.title}" to "${title}".`);
+  }
+
+  if (description !== undefined && (current.description ?? "") !== description) {
+    logs.push("Description was updated.");
   }
 
   if (current.assigned_to_id !== assignedTo.id) {
@@ -461,10 +472,24 @@ export async function archiveProjectAction(_: AuthActionState, formData: FormDat
   redirect("/projects");
 }
 
+export async function deleteProjectAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  await requireManageProject();
+  const projectId = asString(formData, "projectId");
+
+  if (!projectId) {
+    return { error: "Project is missing." };
+  }
+
+  await query("DELETE FROM projects WHERE id = $1", [projectId]);
+  revalidatePath("/projects");
+  redirect("/projects");
+}
+
 export async function createTaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
   const user = await requireCreateTask();
   const projectId = asString(formData, "projectId");
   const title = asString(formData, "title");
+  const descriptionInput = asString(formData, "description");
   const assignedToId = asString(formData, "assignedToId");
   const startDate = asString(formData, "startDate");
   const dueDate = asString(formData, "dueDate");
@@ -487,6 +512,8 @@ export async function createTaskAction(_: AuthActionState, formData: FormData): 
     return { error: "Task due date cannot be earlier than the start date." };
   }
 
+  const description = descriptionInput || defaultTaskDescription(title);
+
   const projectResult = await query<{ id: string }>(
     "SELECT id FROM projects WHERE id = $1 AND archived_at IS NULL LIMIT 1",
     [projectId]
@@ -506,7 +533,7 @@ export async function createTaskAction(_: AuthActionState, formData: FormData): 
   }
 
   const result = await query<{ id: string }>(
-    `INSERT INTO tasks (project_id, title, assigned_to_id, start_date, due_date, priority, status)
+    `INSERT INTO tasks (project_id, title, description, assigned_to_id, start_date, due_date, priority, status)
      VALUES (
        $1,
        $2,
@@ -514,14 +541,15 @@ export async function createTaskAction(_: AuthActionState, formData: FormData): 
        $4,
        $5,
        $6,
+       $7,
        CASE
-         WHEN $7::text <> 'done' AND $5::date IS NOT NULL AND $5::date < current_date THEN 'overdue'
-         WHEN $7::text = 'overdue' THEN 'todo'
-         ELSE $7::text
+         WHEN $8::text <> 'done' AND $6::date IS NOT NULL AND $6::date < current_date THEN 'overdue'
+         WHEN $8::text = 'overdue' THEN 'todo'
+         ELSE $8::text
        END
      )
      RETURNING id`,
-    [projectId, title, assignedToId, startDate || null, dueDate || null, priority, status]
+    [projectId, title, description, assignedToId, startDate || null, dueDate || null, priority, status]
   );
   await createWorkItemLog({
     action: "created",
@@ -540,6 +568,7 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
   const taskId = asString(formData, "taskId");
   const projectId = asString(formData, "projectId");
   const title = asString(formData, "title");
+  const descriptionInput = asString(formData, "description");
   const assignedToId = asString(formData, "assignedToId");
   const startDate = asString(formData, "startDate");
   const dueDate = asString(formData, "dueDate");
@@ -562,6 +591,8 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
     return { error: "Task due date cannot be earlier than the start date." };
   }
 
+  const description = descriptionInput || defaultTaskDescription(title);
+
   const assigneeResult = await query<{ email: string; id: string; name: string | null }>(
     "SELECT id, name, email::text AS email FROM users WHERE id = $1 AND archived_at IS NULL LIMIT 1",
     [assignedToId]
@@ -576,6 +607,7 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
     assigned_to_email: string;
     assigned_to_id: string;
     assigned_to_name: string | null;
+    description: string | null;
     due_date: Date | string | null;
     priority: string;
     start_date: Date | string | null;
@@ -584,6 +616,7 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
   }>(
     `SELECT
        tasks.title,
+       tasks.description,
        tasks.assigned_to_id,
        users.name AS assigned_to_name,
        users.email::text AS assigned_to_email,
@@ -608,19 +641,20 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
   const result = await query<{ id: string; status: string }>(
     `UPDATE tasks
      SET title = $1,
-         assigned_to_id = $2,
-         start_date = $3,
-         due_date = $4,
-         priority = $5,
+         description = $2,
+         assigned_to_id = $3,
+         start_date = $4,
+         due_date = $5,
+         priority = $6,
          status = CASE
-           WHEN $6::text <> 'done' AND $4::date IS NOT NULL AND $4::date < current_date THEN 'overdue'
-           WHEN $6::text = 'overdue' THEN 'todo'
-           ELSE $6::text
+           WHEN $7::text <> 'done' AND $5::date IS NOT NULL AND $5::date < current_date THEN 'overdue'
+           WHEN $7::text = 'overdue' THEN 'todo'
+           ELSE $7::text
          END,
          updated_at = now()
-     WHERE id = $7 AND project_id = $8 AND archived_at IS NULL
+     WHERE id = $8 AND project_id = $9 AND archived_at IS NULL
      RETURNING id, status`,
-    [title, assignedToId, startDate || null, dueDate || null, priority, status, taskId, projectId]
+    [title, description, assignedToId, startDate || null, dueDate || null, priority, status, taskId, projectId]
   );
 
   if (!result.rows[0]) {
@@ -630,6 +664,7 @@ export async function updateTaskAction(_: AuthActionState, formData: FormData): 
   const logs = getWorkItemChangeLogs({
     assignedTo: assignee,
     current,
+    description,
     dueDate,
     priority,
     startDate,

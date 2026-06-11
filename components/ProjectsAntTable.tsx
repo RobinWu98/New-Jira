@@ -1,10 +1,11 @@
 "use client";
 
-import { Button, Space, Table } from "antd";
+import { Table } from "antd";
 import type { TableColumnsType, TableProps } from "antd";
 import type { FilterValue, SorterResult } from "antd/es/table/interface";
 import { useState } from "react";
-import { ArchiveProjectForm, EditProjectModal, type ProjectFormData } from "@/components/ProjectForms";
+import { EditProjectModal, type ProjectFormData } from "@/components/ProjectForms";
+import { useResizableAntColumns } from "@/components/ResizableAntColumns";
 import { StatusPill, UiButtonLink } from "@/components/UiControls";
 
 export type ProjectsAntTableUser = {
@@ -38,15 +39,6 @@ export function ProjectsAntTable({ canModify, currentUserId, projects, users }: 
   const [filteredInfo, setFilteredInfo] = useState<Record<string, FilterValue | null>>({});
   const [sortedInfo, setSortedInfo] = useState<SorterResult<ProjectsAntTableRow>>({});
 
-  const clearFilters = () => {
-    setFilteredInfo({});
-  };
-
-  const clearAll = () => {
-    setFilteredInfo({});
-    setSortedInfo({});
-  };
-
   const handleChange: TableProps<ProjectsAntTableRow>["onChange"] = (_pagination, filters, sorter) => {
     setFilteredInfo(filters);
     setSortedInfo(Array.isArray(sorter) ? sorter[0] ?? {} : sorter);
@@ -62,45 +54,51 @@ export function ProjectsAntTable({ canModify, currentUserId, projects, users }: 
     status: project.status
   });
 
-  const columns: TableColumnsType<ProjectsAntTableRow> = [
+  const baseColumns: TableColumnsType<ProjectsAntTableRow> = [
     {
       title: "Project",
       dataIndex: "name",
       key: "name",
+      ellipsis: true,
       render: (name: string, project) => (
         <a className="project-row-link" href={`/projects/${project.id}`}>
           {name}
         </a>
-      )
+      ),
+      width: 220
     },
     {
       title: "Open Days",
       dataIndex: "openDays",
       key: "openDays",
+      align: "center",
       sorter: (left, right) => left.openDays - right.openDays,
       sortOrder: sortedInfo.columnKey === "openDays" ? sortedInfo.order : null,
       render: (_days: number, project) => project.openDaysLabel,
-      width: 130
+      width: 108
     },
     {
       title: "Due Date",
       dataIndex: "dueDate",
       key: "dueDate",
+      align: "center",
       sorter: (left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime(),
       sortOrder: sortedInfo.columnKey === "dueDate" ? sortedInfo.order : null,
       render: (_date: string, project) => project.dueDateLabel,
-      width: 140
+      width: 116
     },
     {
       title: "Tasks",
       dataIndex: "taskCount",
       key: "taskCount",
-      width: 100
+      align: "center",
+      width: 76
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
+      align: "center",
       filters: [
         { text: "Ongoing", value: "active" },
         { text: "Completed", value: "done" }
@@ -110,44 +108,39 @@ export function ProjectsAntTable({ canModify, currentUserId, projects, users }: 
       sorter: (left, right) => left.statusLabel.localeCompare(right.statusLabel),
       sortOrder: sortedInfo.columnKey === "status" ? sortedInfo.order : null,
       render: (_status: ProjectsAntTableRow["status"], project) => <StatusPill status={project.status}>{project.statusLabel}</StatusPill>,
-      width: 150
+      width: 118
     },
     {
       title: "Actions",
       key: "actions",
+      align: "center",
       render: (_value, project) =>
         canModify ? (
           <span className="record-actions">
             <EditProjectModal users={users} currentUserId={currentUserId} project={toProjectFormData(project)} />
-            <ArchiveProjectForm projectId={project.id} />
           </span>
         ) : (
           <UiButtonLink variant="secondary" href={`/projects/${project.id}`}>
             View
           </UiButtonLink>
         ),
-      width: 190
+      width: 92
     }
   ];
+  const { columns, scrollX } = useResizableAntColumns(baseColumns, "projects-ant-table-widths", 86);
 
   return (
     <div className="project-ant-table-shell">
-      <div className="project-ant-table-toolbar">
-        <strong>Projects ({projects.length})</strong>
-        <Space wrap>
-          <Button onClick={clearFilters}>Reset filters</Button>
-          <Button onClick={clearAll}>Reset filters and sorters</Button>
-        </Space>
-      </div>
       <Table<ProjectsAntTableRow>
         bordered
         columns={columns}
         dataSource={projects}
         onChange={handleChange}
-        pagination={{ pageSize: 10, showSizeChanger: true }}
+        pagination={{ pageSize: 10, showSizeChanger: true, size: "small" }}
         rowKey="id"
-        scroll={{ x: 860 }}
-        size="middle"
+        scroll={{ x: scrollX }}
+        size="small"
+        tableLayout="fixed"
       />
     </div>
   );

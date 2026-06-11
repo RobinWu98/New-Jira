@@ -141,7 +141,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
     <AppFrame shellClassName="project-shell">
       <PageHeader title="Projects" />
       <section className="panel">
-        <div className="section-toolbar">
+        <div className="section-toolbar project-create-toolbar">
           <div className="toolbar-actions">
             {userCanCreateProject ? <CreateProjectModal users={users} currentUserId={user.id} /> : null}
           </div>

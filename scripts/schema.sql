@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
+  description TEXT,
   assigned_to_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   start_date DATE,
   due_date DATE,
@@ -245,6 +246,7 @@ BEGIN
 END $$;
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to_id UUID REFERENCES users(id) ON DELETE RESTRICT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_date DATE;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
@@ -274,6 +276,13 @@ WHERE tasks.project_id = projects.id
 
 ALTER TABLE tasks ALTER COLUMN assigned_to_id SET NOT NULL;
 ALTER TABLE tasks DROP COLUMN IF EXISTS progress;
+
+UPDATE tasks
+SET description = format(
+  'Review the work needed for "%s", confirm the expected outcome, and update progress as the task moves forward.',
+  title
+)
+WHERE description IS NULL OR btrim(description) = '';
 
 CREATE TABLE IF NOT EXISTS two_factor_challenges (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -358,8 +367,19 @@ WHERE NOT EXISTS (SELECT 1 FROM projects WHERE projects.name = seed.name);
 
 UPDATE projects SET status = 'active' WHERE status NOT IN ('active', 'done');
 
-INSERT INTO tasks (project_id, title, assigned_to_id, start_date, due_date, priority, status)
-SELECT projects.id, seed.title, users.id, projects.start_date, projects.ddl, seed.priority, seed.status
+INSERT INTO tasks (project_id, title, description, assigned_to_id, start_date, due_date, priority, status)
+SELECT
+  projects.id,
+  seed.title,
+  format(
+    'Review the work needed for "%s", confirm the expected outcome, and update progress as the task moves forward.',
+    seed.title
+  ),
+  users.id,
+  projects.start_date,
+  projects.ddl,
+  seed.priority,
+  seed.status
 FROM (
   VALUES
     ('Website Refresh', 'Collect final homepage copy', 'mia.rodriguez@example.com', 'high', 'in_progress'),

@@ -4,6 +4,7 @@ import { Table } from "antd";
 import type { TableColumnsType } from "antd";
 import { useState } from "react";
 import { AdminArchiveUserForm, AdminUpdateUserForm } from "@/components/AuthForms";
+import { useResizableAntColumns } from "@/components/ResizableAntColumns";
 import { UiButton } from "@/components/UiControls";
 
 type AdminUserRow = {
@@ -16,11 +17,12 @@ type AdminUserRow = {
 
 export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
   const [selectedUser, setSelectedUser] = useState<AdminUserRow | null>(null);
-  const columns: TableColumnsType<AdminUserRow> = [
+  const baseColumns: TableColumnsType<AdminUserRow> = [
     {
       title: "Name",
       dataIndex: "name",
       key: "name",
+      width: 220,
       sorter: (left, right) => (left.name || "").localeCompare(right.name || ""),
       render: (name: string | null) => name || "No name"
     },
@@ -28,12 +30,14 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
       title: "Email",
       dataIndex: "email",
       key: "email",
+      width: 280,
       sorter: (left, right) => left.email.localeCompare(right.email)
     },
     {
       title: "Department",
       dataIndex: "category",
       key: "category",
+      width: 180,
       filters: [
         { text: "IT", value: "IT" },
         { text: "Sales", value: "Sales" },
@@ -49,6 +53,7 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
       title: "Level",
       dataIndex: "role",
       key: "role",
+      width: 150,
       filters: [
         { text: "Admin", value: "admin" },
         { text: "Manager", value: "manager" },
@@ -68,6 +73,7 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
       width: 120
     }
   ];
+  const { columns, scrollX } = useResizableAntColumns(baseColumns, "admin-users-ant-table-widths", 92);
 
   return (
     <>
@@ -88,8 +94,9 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
           })}
           pagination={users.length > 10 ? { pageSize: 10, showSizeChanger: true } : false}
           rowKey="id"
-          scroll={{ x: 860 }}
+          scroll={{ x: scrollX }}
           size="middle"
+          tableLayout="fixed"
         />
       </div>
       {selectedUser ? (

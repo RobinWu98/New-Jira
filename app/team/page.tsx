@@ -22,6 +22,7 @@ type TeamTaskRow = {
   project_status: string;
   task_id: string;
   task_title: string;
+  task_description: string | null;
   task_start_date: Date | string | null;
   task_due_date: Date | string | null;
   task_priority: string;
@@ -107,6 +108,7 @@ function toTaskDetailData(task: TeamTaskRow, assignedTo: string, mentionUsers: U
     projectId: task.project_id,
     type: "task" as const,
     title: task.task_title,
+    description: task.task_description ?? "",
     projectName: task.project_name,
     assignedTo,
     startDate: task.task_start_date ? formatDate(task.task_start_date) : "No date",
@@ -138,6 +140,7 @@ export default async function TeamPage() {
          projects.status AS project_status,
          tasks.id AS task_id,
          tasks.title AS task_title,
+         tasks.description AS task_description,
          tasks.start_date AS task_start_date,
          tasks.due_date AS task_due_date,
          tasks.priority AS task_priority,
