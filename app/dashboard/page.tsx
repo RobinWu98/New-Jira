@@ -1,8 +1,8 @@
 import { AppFrame } from "@/components/AppFrame";
 import { PageHeader } from "@/components/PageHeader";
-import { DashboardChart } from "@/components/DashboardChart";
-import { TaskDetailModal, type TaskCommentData, type TaskLogData, type UserOption } from "@/components/ProjectForms";
-import { ResizableTaskColumnHeader, ResizableTaskTable } from "@/components/ResizableTaskTable";
+import { type TaskCommentData, type TaskLogData, type UserOption } from "@/components/ProjectForms";
+import { WorkItemsAntTable, type WorkItemAntTableRow } from "@/components/WorkItemsAntTable";
+import { UiButtonLink } from "@/components/UiControls";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { syncOverdueWorkItems } from "@/lib/overdue";
@@ -90,6 +90,14 @@ function toDateInput(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
+function toOptionalDateInput(value: Date | string | null) {
+  if (!value) {
+    return "";
+  }
+
+  return value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
+}
+
 function formatDate(value: Date | string) {
   const date = value instanceof Date ? value : new Date(`${value}T00:00:00`);
 
@@ -109,13 +117,6 @@ function formatDateTime(value: Date | string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(date);
-}
-
-function formatLabel(value: string) {
-  return value
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }
 
 function isUserMentioned(body: string, user: { email: string; name: string | null }) {
@@ -349,12 +350,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     range === "all"
       ? "across all assigned projects"
       : `for ${RANGE_LABELS[range].toLowerCase()}`;
-  const statusData = [
-    { name: "Overdue", value: summary.overdue, color: "#de350b" },
-    { name: "Todo", value: summary.todo, color: "#f39c12" },
-    { name: "In Progress", value: summary.inProgress, color: "#0c66e4" },
-    { name: "Done", value: summary.done, color: "#22a06b" }
-  ];
+  const overdueTasks = tasks.filter((task) => task.status === "overdue").slice(0, 3);
+  const taskRows: WorkItemAntTableRow[] = tasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    projectName: task.project_name,
+    startLabel: task.start_date ? formatDate(task.start_date) : "No date",
+    dueLabel: formatOptionalDate(task.due_date),
+    dueSort: toOptionalDateInput(task.due_date),
+    priority: task.priority,
+    status: task.status,
+    detail: toTaskDetailData(task, commentsByTask.get(task.id) ?? [], logsByTask.get(task.id) ?? [], mentionUsers)
+  }));
 
   return (
     <AppFrame shellClassName="dashboard-shell">
@@ -364,18 +371,44 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <h2>Workload</h2>
           <nav className="segmented-nav" aria-label="Dashboard range">
             {(["all", "month", "week"] as WorkloadRange[]).map((option) => (
-              <a
-                className={`button secondary${range === option ? " is-active" : ""}`}
+              <UiButtonLink
+                variant="secondary"
+                className={range === option ? "is-active" : ""}
                 href={`/dashboard?range=${option}`}
                 key={option}
               >
                 {RANGE_LABELS[option]}
-              </a>
+              </UiButtonLink>
             ))}
           </nav>
         </div>
         <div className="workload-layout">
-          <DashboardChart statusData={statusData} />
+          {summary.overdue ? (
+            <aside className="overdue-warning" aria-live="polite">
+              <div>
+                <span className="overdue-warning-label">Overdue warning</span>
+                <strong>
+                  {summary.overdue} overdue {summary.overdue === 1 ? "task" : "tasks"}
+                </strong>
+                <p>
+                  Review these first {rangeText}. Update the due date or move completed work to Done.
+                </p>
+              </div>
+              <ul>
+                {overdueTasks.map((task) => (
+                  <li key={task.id}>
+                    <span>{task.title}</span>
+                    <small>{task.project_name} - Due {formatOptionalDate(task.due_date)}</small>
+                  </li>
+                ))}
+              </ul>
+            </aside>
+          ) : (
+            <aside className="overdue-clear">
+              <strong>No overdue tasks</strong>
+              <span>Your assigned workload is clear of overdue items {rangeText}.</span>
+            </aside>
+          )}
           <div className="workload-copy">
             <div className="workload-summary" aria-label="Workload summary">
               <div className="workload-summary-row is-total">
@@ -406,40 +439,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <div className="section-toolbar">
           <h2>Assigned Tasks</h2>
         </div>
-        {tasks.length ? (
-          <ResizableTaskTable
-            ariaLabel="Assigned tasks"
-            className="dashboard-task-table"
-            defaultWidths={[320, 160, 120, 120, 100, 200]}
-            storageKey="dashboard-task-table-widths"
-          >
-            <div className="tasks-table-row dashboard-task-row tasks-table-head" role="row">
-              <ResizableTaskColumnHeader index={0}>Task</ResizableTaskColumnHeader>
-              <ResizableTaskColumnHeader index={1}>Project</ResizableTaskColumnHeader>
-              <ResizableTaskColumnHeader index={2}>Start</ResizableTaskColumnHeader>
-              <ResizableTaskColumnHeader index={3}>Due Date</ResizableTaskColumnHeader>
-              <ResizableTaskColumnHeader index={4}>Priority</ResizableTaskColumnHeader>
-              <ResizableTaskColumnHeader index={5}>Status</ResizableTaskColumnHeader>
-            </div>
-            {tasks.map((task) => (
-              <div className="tasks-table-row dashboard-task-row" role="row" key={task.id}>
-                <span role="cell">
-                  <TaskDetailModal
-                    task={toTaskDetailData(task, commentsByTask.get(task.id) ?? [], logsByTask.get(task.id) ?? [], mentionUsers)}
-                  />
-                </span>
-                <span role="cell">{task.project_name}</span>
-                <span role="cell">{task.start_date ? formatDate(task.start_date) : "No date"}</span>
-                <span role="cell">{formatOptionalDate(task.due_date)}</span>
-                <span role="cell">
-                  <span className={`task-pill priority-${task.priority}`}>{formatLabel(task.priority)}</span>
-                </span>
-                <span role="cell">
-                  <span className={`task-pill task-status-${task.status}`}>{formatLabel(task.status)}</span>
-                </span>
-              </div>
-            ))}
-          </ResizableTaskTable>
+        {taskRows.length ? (
+          <WorkItemsAntTable rows={taskRows} showProject title="Assigned Tasks" />
         ) : (
           <div className="notice">No assigned tasks in this range.</div>
         )}

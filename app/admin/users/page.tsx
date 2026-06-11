@@ -1,4 +1,5 @@
-import { AdminCreateUserModal, AdminUsersTable } from "@/components/AuthForms";
+import { AdminCreateUserModal } from "@/components/AuthForms";
+import { AdminUsersTable } from "@/components/AdminUsersAntTable";
 import { AppFrame } from "@/components/AppFrame";
 import { PageHeader } from "@/components/PageHeader";
 import { type UserRole, requireAdmin } from "@/lib/auth";

@@ -1,6 +1,7 @@
 import { ProfileEditModal } from "@/components/AuthForms";
 import { AppFrame } from "@/components/AppFrame";
 import { PageHeader } from "@/components/PageHeader";
+import { UiButtonLink } from "@/components/UiControls";
 import { canManageUsers, requireUser } from "@/lib/auth";
 
 export default async function ProfilePage() {
@@ -32,9 +33,9 @@ export default async function ProfilePage() {
         <div className="button-row">
           <ProfileEditModal user={user} />
           {canManageUsers(user) ? (
-            <a className="button" href="/admin/users">
+            <UiButtonLink href="/admin/users">
               Manage Users
-            </a>
+            </UiButtonLink>
           ) : null}
         </div>
       </section>

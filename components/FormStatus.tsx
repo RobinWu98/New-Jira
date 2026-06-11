@@ -1,13 +1,14 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
+import { UiButton } from "./UiControls";
 
 export function SubmitButton({ children }: { children: React.ReactNode }) {
   const { pending } = useFormStatus();
 
   return (
-    <button className="button" type="submit" disabled={pending}>
+    <UiButton type="submit" disabled={pending}>
       {pending ? "Working..." : children}
-    </button>
+    </UiButton>
   );
 }

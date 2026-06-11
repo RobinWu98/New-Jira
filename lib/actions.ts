@@ -1282,7 +1282,7 @@ export async function updateUserProfileAction(_: AuthActionState, formData: Form
   const user = await requireUser();
   const name = asString(formData, "name");
   const email = asString(formData, "email").toLowerCase();
-  const category = normalizeCategory(asString(formData, "category"));
+  const category = user.role === "staff" ? user.category : normalizeCategory(asString(formData, "category"));
 
   if (!name) {
     return { error: "Please enter a name." };

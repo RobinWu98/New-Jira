@@ -1,5 +1,6 @@
 import { AppFrame } from "@/components/AppFrame";
 import { PageHeader } from "@/components/PageHeader";
+import { UiButton } from "@/components/UiControls";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/lib/actions";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
@@ -73,9 +74,9 @@ export default async function NotificationsPage() {
             <span className="result-count">{unreadCount} unread</span>
             {unreadCount ? (
               <form action={markAllNotificationsReadAction}>
-                <button className="button secondary" type="submit">
+                <UiButton variant="secondary" type="submit">
                   Mark all read
-                </button>
+                </UiButton>
               </form>
             ) : null}
           </div>
@@ -97,9 +98,9 @@ export default async function NotificationsPage() {
                 {!notification.read_at ? (
                   <form action={markNotificationReadAction}>
                     <input name="notificationId" type="hidden" value={notification.id} />
-                    <button className="button secondary" type="submit">
+                    <UiButton variant="secondary" type="submit">
                       Mark read
-                    </button>
+                    </UiButton>
                   </form>
                 ) : null}
               </article>

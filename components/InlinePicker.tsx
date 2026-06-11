@@ -8,6 +8,7 @@ import {
   updateSubtaskAction,
   updateSubtaskStatusAction
 } from "@/lib/actions";
+import { formatUiLabel, PickerOptionButton } from "./UiControls";
 
 type Props = {
   kind: "priority" | "status";
@@ -61,7 +62,7 @@ export default function InlinePicker(props: Props) {
         onClick={() => setOpen((s) => !s)}
         aria-expanded={open}
       >
-        {current.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+        {formatUiLabel(current)}
       </button>
       {open ? (
         <div className="picker-dropdown" role="menu">
@@ -89,9 +90,7 @@ export default function InlinePicker(props: Props) {
                 </>
               ) : null}
               <input name={kind === "priority" ? "priority" : "status"} type="hidden" value={opt} />
-              <button className={`picker-item ${opt === current ? "is-active" : ""} ${kind === "priority" ? `priority-${opt}` : `task-status-${opt}`}`} type="submit">
-                {opt.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
-              </button>
+              <PickerOptionButton active={opt === current} kind={kind} value={opt} />
             </form>
           ))}
         </div>

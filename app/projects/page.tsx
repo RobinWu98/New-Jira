@@ -1,12 +1,8 @@
 import { AppFrame } from "@/components/AppFrame";
 import { PageHeader } from "@/components/PageHeader";
-import { DraggableScroll } from "@/components/DraggableScroll";
-import {
-  CreateProjectModal,
-  ArchiveProjectForm,
-  EditProjectModal,
-  type ProjectFormData
-} from "@/components/ProjectForms";
+import { CreateProjectModal } from "@/components/ProjectForms";
+import { ProjectsAntTable, type ProjectsAntTableRow } from "@/components/ProjectsAntTable";
+import { UiButton } from "@/components/UiControls";
 import { canCreateProject, canManageProject, requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -31,34 +27,19 @@ type ProjectRow = {
 };
 
 type ProjectStatusFilter = "active" | "done" | "all";
-type ProjectSort = "ddl_asc" | "ddl_desc" | "name_asc" | "newest" | "tasks_desc";
 
 type ProjectsPageProps = {
-  searchParams: Promise<{ status?: string; owner?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{ status?: string }>;
 };
 
 const PROJECT_STATUS_LABELS: Record<ProjectStatusFilter, string> = {
-  active: "Active",
+  active: "Ongoing",
   done: "Completed",
   all: "View All"
 };
 
-const PROJECT_SORT_LABELS: Record<ProjectSort, string> = {
-  ddl_asc: "Due Date Soonest",
-  ddl_desc: "Due Date Latest",
-  name_asc: "Name A-Z",
-  newest: "Newest",
-  tasks_desc: "Most Tasks"
-};
-
 function normalizeStatusFilter(value: string | undefined): ProjectStatusFilter {
   return value === "done" || value === "completed" ? "done" : value === "all" ? "all" : "active";
-}
-
-function normalizeProjectSort(value: string | undefined): ProjectSort {
-  return value === "ddl_desc" || value === "name_asc" || value === "newest" || value === "tasks_desc"
-    ? value
-    : "ddl_asc";
 }
 
 function toDateInput(value: Date | string) {
@@ -75,149 +56,50 @@ function formatDate(value: Date | string) {
   return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
 }
 
+function getOpenDays(value: Date | string) {
+  const opened = value instanceof Date ? new Date(value) : new Date(value);
+  const today = new Date();
+  opened.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+
+  return Math.max(0, Math.floor((today.getTime() - opened.getTime()) / 86_400_000));
+}
+
+function formatOpenDays(days: number) {
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
 function normalizeProjectStatus(status: string) {
   return status === "done" ? "done" : "active";
 }
 
 function formatProjectStatus(status: string) {
-  return normalizeProjectStatus(status) === "done" ? "Completed" : "Active";
+  return normalizeProjectStatus(status) === "done" ? "Completed" : "Ongoing";
 }
 
-function getDateTime(value: Date | string) {
-  return value instanceof Date ? value.getTime() : new Date(`${value}T00:00:00`).getTime();
-}
+function toTableRow(project: ProjectRow): ProjectsAntTableRow {
+  const openDays = getOpenDays(project.created_at);
 
-function getProjectHref(params: { status: ProjectStatusFilter; ownerId: string; queryText: string; sort: ProjectSort }) {
-  const next = new URLSearchParams();
-  next.set("status", params.status);
-
-  if (params.ownerId) {
-    next.set("owner", params.ownerId);
-  }
-
-  if (params.queryText) {
-    next.set("q", params.queryText);
-  }
-
-  if (params.sort !== "ddl_asc") {
-    next.set("sort", params.sort);
-  }
-
-  return `/projects?${next.toString()}`;
-}
-
-function toProjectFormData(project: ProjectRow): ProjectFormData {
   return {
     id: project.id,
     name: project.name,
     description: project.description ?? "",
     startDate: toDateInput(project.start_date),
-    ddl: toDateInput(project.ddl),
+    dueDate: toDateInput(project.ddl),
+    dueDateLabel: formatDate(project.ddl),
+    openDays,
+    openDaysLabel: formatOpenDays(openDays),
     ownerId: project.owner_id ?? "",
-    status: normalizeProjectStatus(project.status)
+    status: normalizeProjectStatus(project.status),
+    statusLabel: formatProjectStatus(project.status),
+    taskCount: Number(project.task_count)
   };
-}
-
-function ProjectTable({
-  title,
-  status,
-  projects,
-  users,
-  currentUserId,
-  canModify,
-  viewSwitch,
-  filterBar,
-  activeFilterLabels
-}: {
-  title: string;
-  status: ProjectStatusFilter;
-  projects: ProjectRow[];
-  users: { id: string; label: string }[];
-  currentUserId: string;
-  canModify: boolean;
-  viewSwitch: React.ReactNode;
-  filterBar: React.ReactNode;
-  activeFilterLabels: string[];
-}) {
-  return (
-    <div className={`project-group project-group-${status}`}>
-      <div className="project-group-toolbar table-title-toolbar project-table-toolbar">
-        <div className="task-table-title-row project-table-title-row">
-          <div className="task-table-title-main">
-            <h3>
-              <span className={`project-keyword project-keyword-${status}`}>{PROJECT_STATUS_LABELS[status]} Projects</span>
-            </h3>
-            {activeFilterLabels.length ? (
-              <span className="title-filter-chips">
-                {activeFilterLabels.map((label) => (
-                  <span key={label}>{label}</span>
-                ))}
-              </span>
-            ) : null}
-          </div>
-          {viewSwitch}
-        </div>
-        {filterBar}
-      </div>
-      <DraggableScroll>
-        <div className={`project-list project-list-detailed project-list-${status}`} role="table" aria-label={title}>
-          <div className="project-list-row project-list-row-detailed project-list-head" role="row">
-            <strong role="columnheader">Project</strong>
-            <strong role="columnheader">Creator</strong>
-            <strong role="columnheader">Start</strong>
-            <strong role="columnheader">Due Date</strong>
-            <strong role="columnheader">Tasks</strong>
-            <strong role="columnheader">Status</strong>
-            <strong role="columnheader">Actions</strong>
-          </div>
-          {projects.map((project) => (
-            <div className="project-list-row project-list-row-detailed" role="row" key={project.id}>
-              <span role="cell">
-                <a className="project-row-link" href={`/projects/${project.id}`}>
-                  {project.name}
-                </a>
-              </span>
-              <span role="cell">{project.owner_name || project.owner_email || "Unassigned"}</span>
-              <span role="cell">{formatDate(project.start_date)}</span>
-              <span role="cell">{formatDate(project.ddl)}</span>
-              <span role="cell">{project.task_count}</span>
-              <span role="cell">
-                <span className={`status-pill status-${normalizeProjectStatus(project.status)}`}>
-                  {formatProjectStatus(project.status)}
-                </span>
-              </span>
-              <span role="cell" className="record-actions">
-                {canModify ? (
-                  <>
-                    <EditProjectModal users={users} currentUserId={currentUserId} project={toProjectFormData(project)} />
-                    <ArchiveProjectForm projectId={project.id} />
-                  </>
-                ) : (
-                  <a className="button secondary" href={`/projects/${project.id}`}>
-                    View
-                  </a>
-                )}
-              </span>
-            </div>
-          ))}
-          {projects.length === 0 ? (
-            <div className="project-list-empty" role="row">
-              No {PROJECT_STATUS_LABELS[status].toLowerCase()} projects match this view.
-            </div>
-          ) : null}
-        </div>
-      </DraggableScroll>
-    </div>
-  );
 }
 
 export default async function ProjectsPage({ searchParams }: ProjectsPageProps) {
   const user = await requireUser();
   const params = await searchParams;
   const selectedStatus = normalizeStatusFilter(params.status);
-  const selectedSort = normalizeProjectSort(params.sort);
-  const selectedOwnerId = params.owner ?? "";
-  const queryText = (params.q ?? "").trim();
 
   const [usersResult, projectsResult] = await Promise.all([
     query<UserRow>(
@@ -249,48 +131,9 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
     id: row.id,
     label: row.name ? `${row.name} (${row.email})` : row.email
   }));
-  const filteredProjects = projectsResult.rows
-    .filter((project) => (selectedOwnerId ? project.owner_id === selectedOwnerId : true))
-    .filter((project) => {
-      if (!queryText) {
-        return true;
-      }
-
-      const needle = queryText.toLowerCase();
-      return [project.name, project.description ?? "", project.owner_name ?? "", project.owner_email ?? ""].some((value) =>
-        value.toLowerCase().includes(needle)
-      );
-    })
-    .sort((left, right) => {
-      if (selectedSort === "ddl_desc") {
-        return getDateTime(right.ddl) - getDateTime(left.ddl);
-      }
-
-      if (selectedSort === "name_asc") {
-        return left.name.localeCompare(right.name);
-      }
-
-      if (selectedSort === "newest") {
-        return getDateTime(right.created_at) - getDateTime(left.created_at);
-      }
-
-      if (selectedSort === "tasks_desc") {
-        return Number(right.task_count) - Number(left.task_count);
-      }
-
-      return getDateTime(left.ddl) - getDateTime(right.ddl);
-    });
-  const projectGroups = {
-    active: filteredProjects.filter((project) => normalizeProjectStatus(project.status) === "active"),
-    done: filteredProjects.filter((project) => normalizeProjectStatus(project.status) === "done"),
-    all: filteredProjects
-  } satisfies Record<ProjectStatusFilter, ProjectRow[]>;
-  const ownerFilterLabel = selectedOwnerId ? users.find((owner) => owner.id === selectedOwnerId)?.label : "";
-  const activeFilterLabels = [
-    queryText ? `Search: ${queryText}` : "",
-    ownerFilterLabel ? `Owner: ${ownerFilterLabel}` : "",
-    selectedSort !== "ddl_asc" ? `Sort: ${PROJECT_SORT_LABELS[selectedSort]}` : ""
-  ].filter(Boolean);
+  const projects = projectsResult.rows
+    .filter((project) => (selectedStatus === "all" ? true : normalizeProjectStatus(project.status) === selectedStatus))
+    .map(toTableRow);
   const userCanCreateProject = canCreateProject(user);
   const userCanManageProject = canManageProject(user);
 
@@ -303,71 +146,46 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
             {userCanCreateProject ? <CreateProjectModal users={users} currentUserId={user.id} /> : null}
           </div>
         </div>
-        <ProjectTable
-          title={`${PROJECT_STATUS_LABELS[selectedStatus]} Projects`}
-          status={selectedStatus}
-          projects={projectGroups[selectedStatus]}
-          users={users}
-          currentUserId={user.id}
-          canModify={userCanManageProject}
-          activeFilterLabels={activeFilterLabels}
-          filterBar={
-            <form className="title-filter-bar project-title-filter-bar" action="/projects">
-              <input name="status" type="hidden" value={selectedStatus} />
-              <div className="filter-field">
-                <label htmlFor="project-search">Search</label>
-                <input id="project-search" name="q" type="search" defaultValue={queryText} placeholder="Search projects" />
-              </div>
-              <div className="filter-field">
-                <label htmlFor="project-owner">Owner</label>
-                <select id="project-owner" name="owner" defaultValue={selectedOwnerId}>
-                  <option value="">All owners</option>
-                  {users.map((owner) => (
-                    <option value={owner.id} key={owner.id}>
-                      {owner.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-field">
-                <label htmlFor="project-sort">Sort</label>
-                <select id="project-sort" name="sort" defaultValue={selectedSort}>
-                  {(Object.keys(PROJECT_SORT_LABELS) as ProjectSort[]).map((sort) => (
-                    <option value={sort} key={sort}>
-                      {PROJECT_SORT_LABELS[sort]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-actions">
-                <button className="button" type="submit">
-                  Apply
-                </button>
-                <a className="button secondary" href={`/projects?status=${selectedStatus}`}>
-                  Reset
-                </a>
-              </div>
-            </form>
-          }
-          viewSwitch={
+        <div className="project-group-toolbar table-title-toolbar project-table-toolbar">
+          <div className="task-table-title-row project-table-title-row">
+            <div className="task-table-title-main">
+              <h3>
+                <span className={`project-keyword project-keyword-${selectedStatus}`}>
+                  {PROJECT_STATUS_LABELS[selectedStatus]} Projects
+                </span>
+              </h3>
+            </div>
             <nav className="table-view-switch" aria-label="Project table view">
-              <button className="button secondary table-view-trigger" type="button" aria-haspopup="true">
-                Table View: {PROJECT_STATUS_LABELS[selectedStatus]} ({projectGroups[selectedStatus].length})
-              </button>
+              <UiButton variant="secondary" className="table-view-trigger" type="button" aria-haspopup="true">
+                Table View: {PROJECT_STATUS_LABELS[selectedStatus]} ({projects.length})
+              </UiButton>
               <div className="table-view-menu" role="menu">
-                {(["active", "done", "all"] as ProjectStatusFilter[]).map((status) => (
-                  <a
-                    className={selectedStatus === status ? "is-active" : ""}
-                    href={getProjectHref({ status, ownerId: selectedOwnerId, queryText, sort: selectedSort })}
-                    key={status}
-                    role="menuitem"
-                  >
-                    {PROJECT_STATUS_LABELS[status]} ({projectGroups[status].length})
-                  </a>
-                ))}
+                {(["active", "done", "all"] as ProjectStatusFilter[]).map((status) => {
+                  const count =
+                    status === "all"
+                      ? projectsResult.rows.length
+                      : projectsResult.rows.filter((project) => normalizeProjectStatus(project.status) === status).length;
+
+                  return (
+                    <a
+                      className={selectedStatus === status ? "is-active" : ""}
+                      href={`/projects?status=${status}`}
+                      key={status}
+                      role="menuitem"
+                    >
+                      {PROJECT_STATUS_LABELS[status]} ({count})
+                    </a>
+                  );
+                })}
               </div>
             </nav>
-          }
+          </div>
+        </div>
+        <ProjectsAntTable
+          canModify={userCanManageProject}
+          currentUserId={user.id}
+          projects={projects}
+          users={users}
         />
       </section>
     </AppFrame>

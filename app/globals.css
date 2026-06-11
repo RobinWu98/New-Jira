@@ -370,7 +370,14 @@ textarea {
 }
 
 .login-shell {
-  margin-top: 28px;
+  display: grid;
+  align-content: center;
+  min-height: calc(100vh - 56px);
+  margin-top: 0;
+}
+
+.login-shell .masthead {
+  width: 100%;
 }
 
 .masthead {
@@ -501,6 +508,15 @@ textarea {
 
 .form-row {
   margin-bottom: 18px;
+}
+
+.forgot-password-link {
+  display: block;
+  width: fit-content;
+  margin: 8px 0 0 auto;
+  font-size: 14px;
+  line-height: 1.2;
+  text-align: right;
 }
 
 .form-grid {
@@ -647,26 +663,26 @@ a.button {
 
 .main-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 220px));
+  grid-template-columns: repeat(2, minmax(0, clamp(180px, 32vw, 260px)));
   grid-template-areas:
     "dashboard dashboard"
     "projects team";
   justify-content: center;
   align-items: center;
-  gap: 28px 40px;
+  gap: clamp(16px, 4vw, 32px);
   padding: 8px 0 4px;
 }
 
 .main-action {
   min-width: 0;
-  min-height: 196px;
+  min-height: clamp(150px, 26vw, 220px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: clamp(10px, 2vw, 16px);
   border: 3px solid var(--line);
-  background: var(--surface);
+  background: #e5e7eb;
   color: var(--ink);
   text-align: center;
   text-decoration: none;
@@ -675,7 +691,7 @@ a.button {
 }
 
 .main-action:hover {
-  background: var(--focus);
+  background: #d1d5db;
   transform: translate(-2px, -2px);
   box-shadow: 8px 8px 0 var(--shadow);
 }
@@ -686,14 +702,14 @@ a.button {
 }
 
 .main-action img {
-  width: clamp(72px, 12vw, 108px);
-  height: clamp(72px, 12vw, 108px);
+  width: clamp(70px, 11vw, 110px);
+  height: clamp(70px, 11vw, 110px);
   object-fit: contain;
 }
 
 .main-action span {
   max-width: 100%;
-  font-size: 22px;
+  font-size: clamp(18px, 2.6vw, 24px);
   font-weight: 800;
   line-height: 1.15;
   overflow-wrap: anywhere;
@@ -702,7 +718,7 @@ a.button {
 .main-action-dashboard {
   grid-area: dashboard;
   justify-self: center;
-  width: min(220px, 100%);
+  width: min(clamp(180px, 32vw, 260px), 100%);
 }
 
 .main-action-projects {
@@ -1299,14 +1315,12 @@ a.button {
 
 .project-list-row.project-list-row-detailed {
   grid-template-columns:
-    minmax(20ch, 1.65fr)
-    minmax(16ch, 1.05fr)
-    minmax(8ch, max-content)
+    minmax(20ch, 1.8fr)
+    minmax(9ch, max-content)
     minmax(8ch, max-content)
     minmax(6ch, max-content)
-    minmax(8ch, max-content)
     minmax(13ch, max-content);
-  min-width: 1040px;
+  min-width: 760px;
 }
 
 .project-list-row:last-child {
@@ -1322,7 +1336,61 @@ a.button {
 }
 
 .project-list-detailed .project-list-empty {
-  min-width: 1040px;
+  min-width: 760px;
+}
+
+.project-ant-table-shell,
+.ant-data-table-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.project-ant-table-toolbar,
+.ant-data-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.project-ant-table-toolbar strong,
+.ant-data-table-toolbar strong {
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.project-ant-table-shell .ant-table-wrapper,
+.ant-data-table-shell .ant-table-wrapper {
+  min-width: 0;
+}
+
+.project-ant-table-shell .ant-table,
+.ant-data-table-shell .ant-table {
+  color: var(--ink);
+}
+
+.project-ant-table-shell .ant-table-thead > tr > th,
+.ant-data-table-shell .ant-table-thead > tr > th {
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.project-ant-table-shell .ant-table-tbody > tr > td,
+.ant-data-table-shell .ant-table-tbody > tr > td {
+  vertical-align: middle;
+}
+
+.project-ant-table-shell .ant-table-tbody > tr:hover > td,
+.ant-data-table-shell .ant-table-tbody > tr:hover > td {
+  background: #f7f8fa;
+}
+
+.project-ant-table-shell .ant-btn,
+.ant-data-table-shell .ant-btn {
+  border-radius: 6px;
+  font-weight: 700;
 }
 
 .project-list-row > span,
@@ -1497,24 +1565,26 @@ a.button {
 .tasks-table-row.task-detail-row {
   grid-template-columns:
     minmax(220px, 1.5fr)
+    minmax(84px, max-content)
     minmax(180px, 1fr)
     minmax(110px, 0.65fr)
     minmax(110px, 0.65fr)
     minmax(120px, 0.7fr)
     minmax(140px, 0.8fr)
     minmax(190px, 1.1fr);
-  min-width: 1070px;
+  min-width: 1160px;
 }
 
 .tasks-table-row.task-detail-row-readonly {
   grid-template-columns:
     minmax(220px, 1.6fr)
+    minmax(84px, max-content)
     minmax(180px, 1.1fr)
     minmax(110px, 0.7fr)
     minmax(110px, 0.7fr)
     minmax(120px, 0.7fr)
     minmax(140px, 0.8fr);
-  min-width: 880px;
+  min-width: 970px;
 }
 
 .tasks-table-row.dashboard-task-row {
@@ -1633,6 +1703,25 @@ a.button {
 
 .subtask-add-button:hover {
   background: #e9f2ff;
+}
+
+.subtask-count-cell {
+  justify-content: center;
+  text-align: center;
+}
+
+.subtask-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 30px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-weight: 800;
+  line-height: 1;
 }
 
 .subtask-table-row {
@@ -2958,6 +3047,15 @@ body {
   margin-top: 10px;
 }
 
+.login-shell .masthead-with-back {
+  justify-content: center;
+  text-align: center;
+}
+
+.login-shell .masthead-with-back .masthead-content {
+  flex: 0 1 auto;
+}
+
 .back-button {
   white-space: nowrap;
   display: inline-flex;
@@ -3093,6 +3191,7 @@ select {
 .tasks-table-row.task-detail-row {
   grid-template-columns:
     minmax(240px, 1.5fr)
+    minmax(84px, max-content)
     minmax(190px, 1fr)
     minmax(110px, 0.55fr)
     minmax(110px, 0.55fr)
@@ -3239,14 +3338,12 @@ select {
 
 .project-list-row.project-list-row-detailed {
   grid-template-columns:
-    minmax(20ch, 1.65fr)
-    minmax(16ch, 1.05fr)
-    minmax(8ch, max-content)
+    minmax(20ch, 1.8fr)
+    minmax(9ch, max-content)
     minmax(8ch, max-content)
     minmax(6ch, max-content)
-    minmax(8ch, max-content)
     minmax(13ch, max-content);
-  min-width: 1040px;
+  min-width: 760px;
 }
 
 .tasks-table-row.dashboard-task-row {
@@ -3261,6 +3358,7 @@ select {
 .tasks-table-row.task-detail-row {
   grid-template-columns:
     minmax(20ch, 1.7fr)
+    minmax(8ch, max-content)
     minmax(12ch, 1fr)
     minmax(6ch, max-content)
     minmax(8ch, max-content)
@@ -3272,6 +3370,7 @@ select {
 .tasks-table-row.task-detail-row-readonly {
   grid-template-columns:
     minmax(20ch, 1.7fr)
+    minmax(8ch, max-content)
     minmax(12ch, 1fr)
     minmax(6ch, max-content)
     minmax(8ch, max-content)
@@ -3293,20 +3392,20 @@ select {
 }
 
 .main-actions {
-  gap: 16px;
+  gap: clamp(14px, 3vw, 24px);
 }
 
 .main-action {
-  min-height: 168px;
+  min-height: clamp(148px, 24vw, 204px);
 }
 
 .main-action img {
-  width: 82px;
-  height: 82px;
+  width: clamp(70px, 10vw, 96px);
+  height: clamp(70px, 10vw, 96px);
 }
 
 .main-action span {
-  font-size: 17px;
+  font-size: clamp(17px, 2.2vw, 22px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3940,34 +4039,83 @@ select {
   gap: 18px;
 }
 
-.workload-panel .dashboard-chart-grid,
-.workload-panel .single-chart {
-  display: block;
-  min-width: 0;
-}
-
-.workload-panel .chart-panel {
-  display: block;
-  height: auto;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-}
-
-.workload-panel .chart-panel h3 {
-  color: #172b4d;
-  font-size: 19px;
-}
-
-.workload-panel .chart-box {
-  height: 280px;
-}
-
 .workload-copy {
   display: grid;
   align-content: start;
   min-width: 0;
+}
+
+.overdue-warning,
+.overdue-clear {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  min-height: 100%;
+  border: 2px solid #ae2a19;
+  border-radius: 8px;
+  background: #fff4f0;
+  padding: 18px;
+}
+
+.overdue-clear {
+  border-color: #1f845a;
+  background: #e3fcef;
+}
+
+.overdue-warning-label {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: #ae2a19;
+  color: #ffffff;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.overdue-warning strong,
+.overdue-clear strong {
+  display: block;
+  color: #091e42;
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.overdue-warning p,
+.overdue-clear span {
+  margin: 8px 0 0;
+  color: #172b4d;
+  font-weight: 600;
+}
+
+.overdue-warning ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overdue-warning li {
+  display: grid;
+  gap: 2px;
+  border-top: 1px solid #f5c2b8;
+  padding-top: 8px;
+}
+
+.overdue-warning li span {
+  color: #091e42;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.overdue-warning li small {
+  color: #5e4d45;
+  font-weight: 700;
 }
 
 .workload-summary {

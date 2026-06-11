@@ -3,17 +3,17 @@ import { AppFrame } from "@/components/AppFrame";
 import { PageHeader } from "@/components/PageHeader";
 import {
   CreateTaskModal,
-  TaskWithSubtasks,
+  ProjectTasksAntTable,
   type SubtaskListItemData,
   type TaskCommentData,
   type TaskListItemData,
   type TaskFormData,
   type TaskLogData
 } from "@/components/ProjectForms";
-import { ResizableTaskColumnHeader, ResizableTaskTable } from "@/components/ResizableTaskTable";
 import { canCreateTask, canManageTask, requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { syncOverdueWorkItems } from "@/lib/overdue";
+import { UiButton, UiButtonLink } from "@/components/UiControls";
 
 type ProjectDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -29,6 +29,7 @@ type ProjectRow = {
   status: string;
   owner_name: string | null;
   owner_email: string | null;
+  created_at: Date | string;
 };
 
 type UserRow = {
@@ -98,7 +99,7 @@ const TASK_PRIORITY_LABELS: Record<TaskPriorityFilter, string> = {
 };
 
 const TASK_STATUS_LABELS: Record<TaskStatusFilter, string> = {
-  active: "Active",
+  active: "Ongoing",
   overdue: "Overdue",
   done: "Completed",
   all: "View All"
@@ -120,6 +121,16 @@ function formatDate(value: Date | string) {
   return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
 }
 
+function formatOpenDays(value: Date | string) {
+  const opened = value instanceof Date ? new Date(value) : new Date(value);
+  const today = new Date();
+  opened.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+
+  const days = Math.max(0, Math.floor((today.getTime() - opened.getTime()) / 86_400_000));
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
 function formatOptionalDate(value: Date | string | null) {
   return value ? formatDate(value) : "No date";
 }
@@ -133,13 +144,6 @@ function formatDateTime(value: Date | string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(date);
-}
-
-function formatLabel(value: string) {
-  return value
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }
 
 function isUuid(value: string) {
@@ -389,6 +393,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
          projects.start_date,
          projects.ddl,
          projects.status,
+         projects.created_at,
          users.name AS owner_name,
          users.email::text AS owner_email
        FROM projects
@@ -599,20 +604,16 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         {project.description ? <p className="project-summary">{project.description}</p> : null}
         <div className="meta-grid detail-meta">
           <div>
-            <strong>Start</strong>
-            <span>{formatDate(project.start_date)}</span>
-          </div>
-          <div>
             <strong>Due Date</strong>
             <span>{formatDate(project.ddl)}</span>
           </div>
           <div>
-            <strong>Creator</strong>
-            <span>{project.owner_name || project.owner_email || "Unassigned"}</span>
+            <strong>Open Days</strong>
+            <span>{formatOpenDays(project.created_at)}</span>
           </div>
           <div>
             <strong>Status</strong>
-            <span>{formatLabel(project.status)}</span>
+            <span>{project.status === "done" ? "Completed" : "Ongoing"}</span>
           </div>
         </div>
       </section>
@@ -632,9 +633,9 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               ) : null}
             </div>
             <nav className="table-view-switch" aria-label="Task table view">
-              <button className="button secondary table-view-trigger" type="button" aria-haspopup="true">
+              <UiButton variant="secondary" className="table-view-trigger" type="button" aria-haspopup="true">
                 Table View: {TASK_STATUS_LABELS[selectedTaskStatus]} ({taskGroups[selectedTaskStatus].length})
-              </button>
+              </UiButton>
               <div className="table-view-menu" role="menu">
                 {(["active", "overdue", "done", "all"] as TaskStatusFilter[]).map((status) => (
                   <a
@@ -694,52 +695,35 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               </select>
             </div>
             <div className="filter-actions">
-              <button className="button" type="submit">
+              <UiButton type="submit">
                 Apply
-              </button>
-              <a className="button secondary" href={`/projects/${project.id}`}>
+              </UiButton>
+              <UiButtonLink variant="secondary" href={`/projects/${project.id}`}>
                 Reset
-              </a>
+              </UiButtonLink>
             </div>
           </form>
         </div>
-        <ResizableTaskTable
-          ariaLabel={`${project.name} tasks`}
-          className="project-task-table"
-          defaultWidths={canShowTaskActions ? [280, 200, 110, 120, 110, 126, 180] : [280, 200, 110, 120, 110, 126]}
-          storageKey={`project-task-table-widths-${canShowTaskActions ? "editable" : "readonly"}`}
-        >
-          <div className={`tasks-table-row tasks-table-head task-detail-row${canShowTaskActions ? "" : " task-detail-row-readonly"}`} role="row">
-            <ResizableTaskColumnHeader index={0}>Task</ResizableTaskColumnHeader>
-            <ResizableTaskColumnHeader index={1}>Assigned To</ResizableTaskColumnHeader>
-            <ResizableTaskColumnHeader index={2}>Start</ResizableTaskColumnHeader>
-            <ResizableTaskColumnHeader index={3}>Due Date</ResizableTaskColumnHeader>
-            <ResizableTaskColumnHeader index={4}>Priority</ResizableTaskColumnHeader>
-            <ResizableTaskColumnHeader index={5}>Status</ResizableTaskColumnHeader>
-            {canShowTaskActions ? <ResizableTaskColumnHeader index={6}>Actions</ResizableTaskColumnHeader> : null}
-          </div>
-          {filteredTasks.map((task) => (
-            <TaskWithSubtasks
-              canManageTask={userCanManageTask}
-              canUpdateStatus
-              key={task.id}
-              subtasks={subtasksByTask.get(task.id) ?? []}
-              task={toTaskListItemData(
+        <ProjectTasksAntTable
+          canManageTask={userCanManageTask}
+          canUpdateStatus
+          rows={filteredTasks.map((task) => {
+            const taskData = toTaskListItemData(
                 project.id,
                 project.name,
                 task,
                 taskCommentsById.get(task.id) ?? [],
                 taskLogsById.get(task.id) ?? []
-              )}
-              users={users}
-            />
-          ))}
-          {filteredTasks.length === 0 ? (
-            <div className="tasks-table-empty" role="row">
-              No tasks match these filters.
-            </div>
-          ) : null}
-        </ResizableTaskTable>
+              );
+
+            return {
+              key: task.id,
+              subtasks: subtasksByTask.get(task.id) ?? [],
+              task: taskData
+            };
+          })}
+          users={users}
+        />
       </section>
     </AppFrame>
   );

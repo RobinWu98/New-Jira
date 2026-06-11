@@ -1,6 +1,7 @@
 import { AppFrame } from "@/components/AppFrame";
 import { PageHeader } from "@/components/PageHeader";
 import { TaskDetailModal, type TaskLogData, type UserOption } from "@/components/ProjectForms";
+import { WorkItemsAntTable, type WorkItemAntTableRow } from "@/components/WorkItemsAntTable";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { syncOverdueWorkItems } from "@/lib/overdue";
@@ -37,13 +38,6 @@ type LogRow = {
   work_item_id: string;
 };
 
-function formatLabel(value: string) {
-  return value
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
 function formatDate(value: Date | string) {
   const date = value instanceof Date ? value : new Date(`${value}T00:00:00`);
 
@@ -52,6 +46,14 @@ function formatDate(value: Date | string) {
 
 function formatOptionalDate(value: Date | string | null) {
   return value ? formatDate(value) : "No due date";
+}
+
+function toOptionalDateInput(value: Date | string | null) {
+  if (!value) {
+    return "";
+  }
+
+  return value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
 }
 
 function formatDateTime(value: Date | string) {
@@ -232,6 +234,17 @@ export default async function TeamPage() {
           const overdueCount = memberTasks.filter(isOverdue).length;
           const focusTask = getFocusTask(memberTasks);
           const memberName = member.name || member.email;
+          const taskRows: WorkItemAntTableRow[] = memberTasks.map((task) => ({
+            id: task.task_id,
+            title: task.task_title,
+            projectName: task.project_name,
+            startLabel: task.task_start_date ? formatDate(task.task_start_date) : "No date",
+            dueLabel: formatOptionalDate(task.task_due_date),
+            dueSort: toOptionalDateInput(task.task_due_date),
+            priority: task.task_priority,
+            status: task.task_status,
+            detail: toTaskDetailData(task, memberName, mentionUsers, logsByTask.get(task.task_id) ?? [])
+          }));
 
           return (
             <article className="team-member-card" key={member.id}>
@@ -263,22 +276,7 @@ export default async function TeamPage() {
                 )}
               </div>
               {memberTasks.length ? (
-                <div className="team-task-list">
-                  {memberTasks.slice(0, 5).map((task) => (
-                    <div className="team-task-row" key={task.task_id}>
-                      <span>
-                        <TaskDetailModal
-                          task={toTaskDetailData(task, memberName, mentionUsers, logsByTask.get(task.task_id) ?? [])}
-                        />
-                        <small>{task.project_name}</small>
-                      </span>
-                      <span>{formatOptionalDate(task.task_due_date)}</span>
-                      <span className={`task-pill priority-${task.task_priority}`}>{formatLabel(task.task_priority)}</span>
-                      <span className={`task-pill task-status-${task.task_status}`}>{formatLabel(task.task_status)}</span>
-                    </div>
-                  ))}
-                  {memberTasks.length > 5 ? <div className="team-more-link">{memberTasks.length - 5} more tasks</div> : null}
-                </div>
+                <WorkItemsAntTable rows={taskRows} showProject title={`${memberName} Tasks`} />
               ) : (
                 <div className="team-empty-state">No assigned tasks</div>
               )}

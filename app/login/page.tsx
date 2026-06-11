@@ -18,7 +18,7 @@ export default async function LoginPage({
   return (
     <main className="page">
       <div className="shell login-shell">
-        <PageHeader title="Svida Job Tracker" />
+        <PageHeader title="SVIDA Job Tracker" hideBack />
         <section className="panel auth-panel">
           {reset === "success" ? (
             <div className="notice success">Password updated. Log in with your new password.</div>
