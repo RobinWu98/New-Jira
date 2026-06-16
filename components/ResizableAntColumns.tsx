@@ -140,5 +140,5 @@ export function useResizableAntColumns<T extends object>(
 
   const scrollX = widths.reduce((sum, width) => sum + width, 0);
 
-  return { columns: resizableColumns, scrollX };
+  return { columns: resizableColumns, scrollX, widths };
 }

@@ -209,8 +209,12 @@ export function canCreateProject(user: User) {
   return user.role === "admin" || user.role === "manager";
 }
 
+export function canEditProject(user: User) {
+  return user.role === "admin" || user.role === "manager";
+}
+
 export function canManageProject(user: User) {
-  return user.role === "admin";
+  return user.role === "admin" || user.role === "manager";
 }
 
 export function canCreateTask(user: User) {
@@ -247,6 +251,16 @@ export async function requireManageProject() {
   const user = await requireUser();
 
   if (!canManageProject(user)) {
+    redirect("/profile");
+  }
+
+  return user;
+}
+
+export async function requireEditProject() {
+  const user = await requireUser();
+
+  if (!canEditProject(user)) {
     redirect("/profile");
   }
 

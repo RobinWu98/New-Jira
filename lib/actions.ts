@@ -13,6 +13,7 @@ import {
   requireAdmin,
   requireCreateProject,
   requireCreateTask,
+  requireEditProject,
   requireManageProject,
   requireManageTask,
   requireUser
@@ -399,7 +400,7 @@ export async function createProjectAction(_: AuthActionState, formData: FormData
 }
 
 export async function updateProjectAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const user = await requireManageProject();
+  const user = await requireEditProject();
   const projectId = asString(formData, "projectId");
   const name = asString(formData, "name");
   const description = asString(formData, "description");
@@ -918,6 +919,36 @@ export async function archiveSubtaskAction(_: AuthActionState, formData: FormDat
   return { message: "Sub-task has been archived." };
 }
 
+export async function deleteSubtaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  await requireManageTask();
+  const projectId = asString(formData, "projectId");
+  const taskId = asString(formData, "taskId");
+  const subtaskId = asString(formData, "subtaskId");
+
+  if (!projectId || !taskId || !subtaskId) {
+    return { error: "Sub-task is missing." };
+  }
+
+  const result = await query<{ id: string }>(
+    `DELETE FROM subtasks
+     USING tasks
+     WHERE subtasks.id = $1
+       AND subtasks.task_id = $2
+       AND tasks.id = subtasks.task_id
+       AND tasks.project_id = $3
+     RETURNING subtasks.id`,
+    [subtaskId, taskId, projectId]
+  );
+
+  if (!result.rows[0]) {
+    return { error: "Sub-task was not found." };
+  }
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  return { message: "Sub-task has been deleted." };
+}
+
 export async function archiveTaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
   const user = await requireManageTask();
   const taskId = asString(formData, "taskId");
@@ -948,6 +979,29 @@ export async function archiveTaskAction(_: AuthActionState, formData: FormData):
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   return { message: "Task has been archived." };
+}
+
+export async function deleteTaskAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  await requireManageTask();
+  const taskId = asString(formData, "taskId");
+  const projectId = asString(formData, "projectId");
+
+  if (!taskId || !projectId) {
+    return { error: "Task is missing." };
+  }
+
+  const result = await query<{ id: string }>(
+    "DELETE FROM tasks WHERE id = $1 AND project_id = $2 RETURNING id",
+    [taskId, projectId]
+  );
+
+  if (!result.rows[0]) {
+    return { error: "Task was not found." };
+  }
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  return { message: "Task has been deleted." };
 }
 
 export async function updateTaskStatusAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {

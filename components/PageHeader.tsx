@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { LeftArrowIcon } from "./AntArrowIcons";
 
 type PageHeaderProps = {
   title: React.ReactNode;
@@ -33,10 +34,7 @@ export function PageHeader({ title, subtitle, children, hideBack = false }: Page
           title="go back to previous page"
           type="button"
         >
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path d="M15 18l-6-6 6-6" />
-            <path d="M9 12h12" />
-          </svg>
+          <LeftArrowIcon />
           <span className="sr-only">go back to previous page</span>
         </button>
       ) : null}

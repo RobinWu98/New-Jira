@@ -3,7 +3,7 @@
 import { Button, Dropdown, Input, Popover, Space, Table } from "antd";
 import type { MenuProps } from "antd";
 import type { TableColumnsType, TableProps } from "antd";
-import type { FilterValue, SorterResult } from "antd/es/table/interface";
+import type { SorterResult } from "antd/es/table/interface";
 import { useActionState, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   type AuthActionState,
@@ -16,6 +16,8 @@ import {
   archiveSubtaskAction,
   archiveTaskAction,
   deleteProjectAction,
+  deleteSubtaskAction,
+  deleteTaskAction,
   updateProjectAction,
   updateSubtaskStatusAction,
   updateSubtaskAction,
@@ -41,6 +43,9 @@ export type ProjectFormData = {
   ddl: string;
   ownerId: string;
   status: string;
+  completedTaskCount?: number;
+  remainingTaskCount?: number;
+  totalTaskCount?: number;
 };
 
 export type TaskFormData = {
@@ -100,6 +105,7 @@ export type TaskDetailData = {
   comments?: TaskCommentData[];
   logs?: TaskLogData[];
   mentionUsers?: UserOption[];
+  subtaskCreateUsers?: UserOption[];
 };
 
 export type TaskCommentData = {
@@ -137,11 +143,13 @@ function Modal({
   title,
   trigger,
   triggerClassName = "button",
+  triggerKind = "ui",
   children
 }: {
   title: string;
   trigger: ReactNode;
   triggerClassName?: string;
+  triggerKind?: "ui" | "antd";
   children: ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -149,7 +157,11 @@ function Modal({
 
   return (
     <>
-      {triggerClassName === "button" ? (
+      {triggerKind === "antd" ? (
+        <Button size="small" type="primary" onClick={() => setIsOpen(true)}>
+          {trigger}
+        </Button>
+      ) : triggerClassName === "button" ? (
         <UiButton type="button" onClick={() => setIsOpen(true)}>
           {trigger}
         </UiButton>
@@ -215,6 +227,17 @@ export function TaskDetailModal({ task }: { task: TaskDetailData }) {
             <TaskStatusPill status={task.status} />
           </div>
         </div>
+        {task.type === "task" && task.subtaskCreateUsers ? (
+          <div className="task-detail-actions">
+            <CreateSubtaskModal
+              projectId={task.projectId}
+              taskId={task.id}
+              trigger="Create Sub-task"
+              triggerClassName="button subtask-create-button"
+              users={task.subtaskCreateUsers}
+            />
+          </div>
+        ) : null}
         <div className="task-detail-tabs" role="tablist" aria-label="Task conversation and activity">
           <button
             aria-selected={activeTab === "message"}
@@ -487,18 +510,20 @@ function MentionTextarea({ id, resetSignal, users }: { id: string; resetSignal: 
 function ProjectForm({
   users,
   currentUserId,
-  project
+  project,
+  readOnly = false
 }: {
   users: UserOption[];
   currentUserId: string;
   project?: ProjectFormData;
+  readOnly?: boolean;
 }) {
   const [state, action] = useActionState(project ? updateProjectAction : createProjectAction, initialState);
   const ownerId = project?.ownerId || currentUserId;
 
   return (
-    <form action={action}>
-      <Feedback state={state} />
+    <form action={readOnly ? undefined : action}>
+      {readOnly ? null : <Feedback state={state} />}
       {project ? <input name="projectId" type="hidden" value={project.id} /> : null}
       <div className="form-row">
         <label htmlFor={`${project?.id ?? "new"}-project-name`}>Project Name</label>
@@ -507,6 +532,7 @@ function ProjectForm({
           name="name"
           type="text"
           defaultValue={project?.name}
+          disabled={readOnly}
           required
         />
       </div>
@@ -517,6 +543,7 @@ function ProjectForm({
           name="description"
           type="text"
           defaultValue={project?.description}
+          disabled={readOnly}
         />
       </div>
       <div className="form-grid two-columns">
@@ -527,6 +554,7 @@ function ProjectForm({
             name="startDate"
             type="date"
             defaultValue={project?.startDate}
+            disabled={readOnly}
             required
           />
         </div>
@@ -537,6 +565,7 @@ function ProjectForm({
             name="ddl"
             type="date"
             defaultValue={project?.ddl}
+            disabled={readOnly}
             required
           />
         </div>
@@ -544,7 +573,7 @@ function ProjectForm({
       <div className="form-grid two-columns">
         <div className="form-row">
           <label htmlFor={`${project?.id ?? "new"}-project-owner`}>Creator</label>
-          <select id={`${project?.id ?? "new"}-project-owner`} name="ownerId" defaultValue={ownerId}>
+          <select id={`${project?.id ?? "new"}-project-owner`} name="ownerId" defaultValue={ownerId} disabled={readOnly}>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.label}
@@ -554,15 +583,53 @@ function ProjectForm({
         </div>
         <div className="form-row">
           <label htmlFor={`${project?.id ?? "new"}-project-status`}>Status</label>
-          <select id={`${project?.id ?? "new"}-project-status`} name="status" defaultValue={project?.status ?? "active"}>
+          <select
+            id={`${project?.id ?? "new"}-project-status`}
+            name="status"
+            defaultValue={project?.status ?? "active"}
+            disabled={readOnly}
+          >
             <option value="active">Active</option>
             <option value="done">Done</option>
           </select>
         </div>
       </div>
-      <div className="button-row">
-        <SubmitButton>{project ? "Update Project" : "Create Project"}</SubmitButton>
-      </div>
+      {project ? (
+        <div className="form-grid two-columns project-task-counts">
+          <div className="form-row">
+            <label htmlFor={`${project.id}-project-remaining-tasks`}>Remaining Tasks</label>
+            <input
+              id={`${project.id}-project-remaining-tasks`}
+              type="text"
+              value={project.remainingTaskCount ?? 0}
+              readOnly
+            />
+          </div>
+          <div className="form-row">
+            <label htmlFor={`${project.id}-project-completed-tasks`}>Completed Tasks</label>
+            <input
+              id={`${project.id}-project-completed-tasks`}
+              type="text"
+              value={project.completedTaskCount ?? 0}
+              readOnly
+            />
+          </div>
+          <div className="form-row">
+            <label htmlFor={`${project.id}-project-total-tasks`}>Total Tasks</label>
+            <input
+              id={`${project.id}-project-total-tasks`}
+              type="text"
+              value={project.totalTaskCount ?? 0}
+              readOnly
+            />
+          </div>
+        </div>
+      ) : null}
+      {readOnly ? null : (
+        <div className="button-row">
+          <SubmitButton>{project ? "Update Project" : "Create Project"}</SubmitButton>
+        </div>
+      )}
     </form>
   );
 }
@@ -578,16 +645,38 @@ export function CreateProjectModal({ users, currentUserId }: { users: UserOption
 export function EditProjectModal({
   users,
   currentUserId,
-  project
+  project,
+  showActions = true,
+  triggerKind = "ui"
 }: {
   users: UserOption[];
   currentUserId: string;
   project: ProjectFormData;
+  showActions?: boolean;
+  triggerKind?: "ui" | "antd";
 }) {
   return (
-    <Modal title="Edit Project" trigger="Edit">
-      <ProjectActionMenu project={project} />
+    <Modal title="Edit Project" trigger="Edit" triggerKind={triggerKind}>
+      {showActions ? <ProjectActionMenu project={project} /> : null}
       <ProjectForm users={users} currentUserId={currentUserId} project={project} />
+    </Modal>
+  );
+}
+
+export function ViewProjectModal({
+  users,
+  currentUserId,
+  project,
+  triggerKind = "antd"
+}: {
+  users: UserOption[];
+  currentUserId: string;
+  project: ProjectFormData;
+  triggerKind?: "ui" | "antd";
+}) {
+  return (
+    <Modal title="View Project" trigger="View" triggerKind={triggerKind}>
+      <ProjectForm users={users} currentUserId={currentUserId} project={project} readOnly />
     </Modal>
   );
 }
@@ -783,8 +872,118 @@ export function CreateTaskModal({ projectId, users }: { projectId: string; users
 export function EditTaskModal({ projectId, users, task }: { projectId: string; users: UserOption[]; task: TaskFormData }) {
   return (
     <Modal title="Edit Task" trigger="Edit">
+      <WorkItemActionMenu item={task} projectId={projectId} type="task" />
       <TaskForm projectId={projectId} users={users} task={task} />
     </Modal>
+  );
+}
+
+type WorkItemDangerAction = "archive" | "delete";
+
+function WorkItemActionMenu({
+  item,
+  projectId,
+  taskId,
+  type
+}: {
+  item: { id: string; title: string };
+  projectId: string;
+  taskId?: string;
+  type: "task" | "subtask";
+}) {
+  const [archiveTaskState, archiveTask] = useActionState(archiveTaskAction, initialState);
+  const [deleteTaskState, deleteTask] = useActionState(deleteTaskAction, initialState);
+  const [archiveSubtaskState, archiveSubtask] = useActionState(archiveSubtaskAction, initialState);
+  const [deleteSubtaskState, deleteSubtask] = useActionState(deleteSubtaskAction, initialState);
+  const [pendingAction, setPendingAction] = useState<WorkItemDangerAction | null>(null);
+  const [deleteItemName, setDeleteItemName] = useState("");
+  const isSubtask = type === "subtask";
+  const itemLabel = isSubtask ? "sub-task" : "task";
+
+  const closeConfirm = () => {
+    setPendingAction(null);
+    setDeleteItemName("");
+  };
+  const canDeleteItem = pendingAction !== "delete" || deleteItemName === item.title;
+  const actionLabel = pendingAction === "delete" ? "Delete" : "Archive";
+  const actionDescription =
+    pendingAction === "delete"
+      ? `This permanently removes the ${itemLabel}.`
+      : `This hides the ${itemLabel} from active views.`;
+  const archiveState = isSubtask ? archiveSubtaskState : archiveTaskState;
+  const deleteState = isSubtask ? deleteSubtaskState : deleteTaskState;
+  const action = pendingAction === "archive"
+    ? isSubtask
+      ? archiveSubtask
+      : archiveTask
+    : isSubtask
+      ? deleteSubtask
+      : deleteTask;
+  const menuItems: MenuProps["items"] = [
+    {
+      key: "archive",
+      label: "Archive"
+    },
+    {
+      danger: true,
+      key: "delete",
+      label: "Delete"
+    }
+  ];
+  const confirmContent = pendingAction ? (
+    <div className="project-action-popover">
+      <strong>{`${actionLabel} this ${itemLabel}?`}</strong>
+      <p>{actionDescription}</p>
+      {pendingAction === "archive" ? <Feedback state={archiveState} /> : <Feedback state={deleteState} />}
+      <form action={action}>
+        <input name="projectId" type="hidden" value={projectId} />
+        <input name="taskId" type="hidden" value={isSubtask ? taskId : item.id} />
+        {isSubtask ? <input name="subtaskId" type="hidden" value={item.id} /> : null}
+        {pendingAction === "delete" ? (
+          <label className="project-action-confirm-name">
+            <span>
+              Type <strong>{item.title}</strong> to delete this {itemLabel}.
+            </span>
+            <Input
+              autoComplete="off"
+              onChange={(event) => setDeleteItemName(event.target.value)}
+              placeholder={item.title}
+              value={deleteItemName}
+            />
+          </label>
+        ) : null}
+        <Space>
+          <Button htmlType="submit" type="primary" danger disabled={!canDeleteItem}>
+            Confirm {actionLabel}
+          </Button>
+          <Button htmlType="button" onClick={closeConfirm}>
+            Cancel
+          </Button>
+        </Space>
+      </form>
+    </div>
+  ) : null;
+
+  return (
+    <div className="project-action-menu">
+      <Popover content={confirmContent} open={Boolean(pendingAction)} placement="bottomRight" trigger="click">
+        <Dropdown
+          menu={{
+            items: menuItems,
+            onClick: ({ key }) => {
+              setPendingAction(key as WorkItemDangerAction);
+              setDeleteItemName("");
+            }
+          }}
+          placement="bottomRight"
+          trigger={["click"]}
+        >
+          <Button aria-label={`${itemLabel} actions`} className="project-action-trigger" type="default">
+            ...
+          </Button>
+        </Dropdown>
+      </Popover>
+    </div>
   );
 }
 
@@ -915,6 +1114,7 @@ export function EditSubtaskModal({
 }) {
   return (
     <Modal title="Edit Sub-task" trigger="Edit">
+      <WorkItemActionMenu item={subtask} projectId={projectId} taskId={taskId} type="subtask" />
       <SubtaskForm projectId={projectId} taskId={taskId} users={users} subtask={subtask} />
     </Modal>
   );
@@ -998,6 +1198,20 @@ type ProjectTaskAntRow = {
   task: TaskListItemData;
 };
 
+type ProjectTaskTableRow =
+  | {
+      key: string;
+      kind: "task";
+      subtasks: SubtaskListItemData[];
+      task: TaskListItemData;
+    }
+  | {
+      key: string;
+      kind: "subtask";
+      parentTask: TaskListItemData;
+      subtask: SubtaskListItemData;
+    };
+
 function taskPriorityRank(priority: string) {
   return priority === "high" ? 0 : priority === "medium" ? 1 : 2;
 }
@@ -1021,19 +1235,30 @@ export function ProjectTasksAntTable({
   rows: ProjectTaskAntRow[];
   users: UserOption[];
 }) {
-  const [filteredInfo, setFilteredInfo] = useState<Record<string, FilterValue | null>>({});
-  const [sortedInfo, setSortedInfo] = useState<SorterResult<ProjectTaskAntRow>>({});
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+  const [sortedInfo, setSortedInfo] = useState<SorterResult<ProjectTaskTableRow>>({});
   const showActions = canManageTask || canUpdateStatus;
 
-  const clearFilters = () => setFilteredInfo({});
   const clearAll = () => {
-    setFilteredInfo({});
     setSortedInfo({});
   };
 
-  const handleChange: TableProps<ProjectTaskAntRow>["onChange"] = (_pagination, filters, sorter) => {
-    setFilteredInfo(filters);
+  const handleChange: TableProps<ProjectTaskTableRow>["onChange"] = (_pagination, _filters, sorter) => {
     setSortedInfo(Array.isArray(sorter) ? sorter[0] ?? {} : sorter);
+  };
+
+  const toggleTaskExpanded = (taskId: string) => {
+    setExpandedTaskIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+
+      return next;
+    });
   };
 
   const renderTaskDetail = (task: TaskListItemData) => {
@@ -1051,21 +1276,11 @@ export function ProjectTasksAntTable({
       status: task.status,
       comments: task.comments,
       logs: task.logs,
-      mentionUsers: users
+      mentionUsers: users,
+      subtaskCreateUsers: canManageTask ? users : undefined
     };
 
-    return (
-      <span className="task-title-cell">
-        <TaskDetailModal task={taskDetail} />
-        <CreateSubtaskModal
-          projectId={task.projectId}
-          taskId={task.id}
-          trigger="+"
-          triggerClassName="subtask-add-button"
-          users={users}
-        />
-      </span>
-    );
+    return <TaskDetailModal task={taskDetail} />;
   };
 
   const renderSubtaskDetail = (subtask: SubtaskListItemData, projectName: string) => {
@@ -1089,80 +1304,166 @@ export function ProjectTasksAntTable({
     return <TaskDetailModal task={subtaskDetail} />;
   };
 
-  const baseColumns: TableColumnsType<ProjectTaskAntRow> = [
+  const getRowStartDate = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.startDate : row.subtask.startDate);
+  const getRowDueDate = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.dueDate : row.subtask.dueDate);
+  const getRowPriority = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.priority : row.subtask.priority);
+  const getRowStatus = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.status : row.subtask.status);
+
+  const getSortRank = (row: ProjectTaskTableRow) => {
+    if (sortedInfo.columnKey === "startDate") {
+      return taskDateRank(getRowStartDate(row));
+    }
+
+    if (sortedInfo.columnKey === "dueDate") {
+      return taskDateRank(getRowDueDate(row));
+    }
+
+    if (sortedInfo.columnKey === "priority") {
+      return taskPriorityRank(getRowPriority(row));
+    }
+
+    if (sortedInfo.columnKey === "status") {
+      return taskStatusRank(getRowStatus(row));
+    }
+
+    return 0;
+  };
+
+  const sortRows = <T extends ProjectTaskTableRow>(items: T[]) => {
+    if (!sortedInfo.order) {
+      return items;
+    }
+
+    const sortedRows = [...items].sort((left, right) => getSortRank(left) - getSortRank(right));
+
+    return sortedInfo.order === "descend" ? sortedRows.reverse() : sortedRows;
+  };
+
+  const tableRows = sortRows(
+    rows.map((row) => ({
+      ...row,
+      kind: "task" as const
+    }))
+  ).flatMap((row) => {
+    if (!expandedTaskIds.has(row.task.id)) {
+      return [row];
+    }
+
+    const childRows = sortRows(
+      row.subtasks.map((subtask) => ({
+        key: `${row.task.id}-${subtask.id}`,
+        kind: "subtask" as const,
+        parentTask: row.task,
+        subtask
+      }))
+    );
+
+    return [row, ...childRows];
+  });
+
+  const baseColumns: TableColumnsType<ProjectTaskTableRow> = [
+    {
+      title: "",
+      key: "expand",
+      render: (_value, row) =>
+        row.kind === "task" ? (
+          <Button
+            aria-label={expandedTaskIds.has(row.task.id) ? "Collapse sub-tasks" : "Expand sub-tasks"}
+            className="task-expand-button"
+            disabled={!row.subtasks.length}
+            onClick={() => toggleTaskExpanded(row.task.id)}
+            size="small"
+            type="text"
+          >
+            {row.subtasks.length ? (expandedTaskIds.has(row.task.id) ? "-" : "+") : ""}
+          </Button>
+        ) : null,
+      width: 48
+    },
     {
       title: "Task",
       key: "title",
       width: 260,
-      render: (_value, row) => renderTaskDetail(row.task),
-      sorter: (left, right) => left.task.title.localeCompare(right.task.title),
-      sortOrder: sortedInfo.columnKey === "title" ? sortedInfo.order : null
+      render: (_value, row) =>
+        row.kind === "task" ? renderTaskDetail(row.task) : renderSubtaskDetail(row.subtask, row.parentTask.projectName)
     },
     {
       title: "Assigned To",
       key: "assignedTo",
       width: 180,
-      render: (_value, row) => row.task.assignedTo,
-      sorter: (left, right) => left.task.assignedTo.localeCompare(right.task.assignedTo),
-      sortOrder: sortedInfo.columnKey === "assignedTo" ? sortedInfo.order : null
+      render: (_value, row) => (row.kind === "task" ? row.task.assignedTo : row.subtask.assignedTo)
     },
     {
       title: "Start",
       key: "startDate",
-      render: (_value, row) => row.task.startLabel,
+      render: (_value, row) => (row.kind === "task" ? row.task.startLabel : row.subtask.startLabel),
+      sorter: true,
+      sortOrder: sortedInfo.columnKey === "startDate" ? sortedInfo.order : null,
       width: 120
     },
     {
       title: "Due Date",
       key: "dueDate",
-      render: (_value, row) => row.task.dueLabel,
-      sorter: (left, right) => taskDateRank(left.task.dueDate) - taskDateRank(right.task.dueDate),
+      render: (_value, row) => (row.kind === "task" ? row.task.dueLabel : row.subtask.dueLabel),
+      sorter: true,
       sortOrder: sortedInfo.columnKey === "dueDate" ? sortedInfo.order : null,
       width: 130
     },
     {
       title: "Priority",
       key: "priority",
-      filters: [
-        { text: "High", value: "high" },
-        { text: "Medium", value: "medium" },
-        { text: "Low", value: "low" }
-      ],
-      filteredValue: filteredInfo.priority ?? null,
-      onFilter: (value, row) => row.task.priority === value,
       render: (_value, row) => (
-        <InlinePicker
-          kind="priority"
-          type="task"
-          current={row.task.priority}
-          projectId={row.task.projectId}
-          taskId={row.task.id}
-          title={row.task.title}
-          assignedToId={row.task.assignedToId}
-          startDate={row.task.startDate}
-          dueDate={row.task.dueDate}
-          status={row.task.status}
-        />
+        row.kind === "task" ? (
+          <InlinePicker
+            kind="priority"
+            type="task"
+            current={row.task.priority}
+            projectId={row.task.projectId}
+            taskId={row.task.id}
+            title={row.task.title}
+            assignedToId={row.task.assignedToId}
+            startDate={row.task.startDate}
+            dueDate={row.task.dueDate}
+            status={row.task.status}
+          />
+        ) : (
+          <InlinePicker
+            kind="priority"
+            type="subtask"
+            current={row.subtask.priority}
+            projectId={row.subtask.projectId}
+            taskId={row.subtask.taskId}
+            subtaskId={row.subtask.id}
+            title={row.subtask.title}
+            assignedToId={row.subtask.assignedToId}
+            startDate={row.subtask.startDate}
+            dueDate={row.subtask.dueDate}
+            status={row.subtask.status}
+          />
+        )
       ),
-      sorter: (left, right) => taskPriorityRank(left.task.priority) - taskPriorityRank(right.task.priority),
+      sorter: true,
       sortOrder: sortedInfo.columnKey === "priority" ? sortedInfo.order : null,
       width: 130
     },
     {
       title: "Status",
       key: "status",
-      filters: [
-        { text: "Overdue", value: "overdue" },
-        { text: "In Progress", value: "in_progress" },
-        { text: "Todo", value: "todo" },
-        { text: "Done", value: "done" }
-      ],
-      filteredValue: filteredInfo.status ?? null,
-      onFilter: (value, row) => row.task.status === value,
       render: (_value, row) => (
-        <InlinePicker kind="status" type="task" current={row.task.status} projectId={row.task.projectId} taskId={row.task.id} />
+        row.kind === "task" ? (
+          <InlinePicker kind="status" type="task" current={row.task.status} projectId={row.task.projectId} taskId={row.task.id} />
+        ) : (
+          <InlinePicker
+            kind="status"
+            type="subtask"
+            current={row.subtask.status}
+            projectId={row.subtask.projectId}
+            taskId={row.subtask.taskId}
+            subtaskId={row.subtask.id}
+          />
+        )
       ),
-      sorter: (left, right) => taskStatusRank(left.task.status) - taskStatusRank(right.task.status),
+      sorter: true,
       sortOrder: sortedInfo.columnKey === "status" ? sortedInfo.order : null,
       width: 150
     },
@@ -1171,139 +1472,40 @@ export function ProjectTasksAntTable({
           {
             title: "Actions",
             key: "actions",
-            render: (_value: unknown, row: ProjectTaskAntRow) =>
+            render: (_value: unknown, row: ProjectTaskTableRow) =>
               canManageTask ? (
                 <span className="table-actions">
-                  <EditTaskModal projectId={row.task.projectId} users={users} task={row.task} />
-                  <ArchiveTaskForm projectId={row.task.projectId} taskId={row.task.id} />
+                  {row.kind === "task" ? (
+                    <EditTaskModal projectId={row.task.projectId} users={users} task={row.task} />
+                  ) : (
+                    <EditSubtaskModal projectId={row.subtask.projectId} taskId={row.subtask.taskId} users={users} subtask={row.subtask} />
+                  )}
                 </span>
               ) : null,
-            width: 190
+            width: 110
           }
         ]
       : [])
   ];
 
-  const baseNestedColumns: TableColumnsType<SubtaskListItemData> = [
-    {
-      title: "Sub-task",
-      dataIndex: "title",
-      key: "title",
-      width: 260,
-      render: (_title: string, subtask) => renderSubtaskDetail(subtask, rows.find((row) => row.task.id === subtask.taskId)?.task.projectName ?? "")
-    },
-    {
-      title: "Assigned To",
-      dataIndex: "assignedTo",
-      key: "assignedTo",
-      width: 180
-    },
-    {
-      title: "Start",
-      dataIndex: "startLabel",
-      key: "startLabel",
-      width: 120
-    },
-    {
-      title: "Due Date",
-      dataIndex: "dueLabel",
-      key: "dueLabel",
-      width: 130
-    },
-    {
-      title: "Priority",
-      key: "priority",
-      render: (_value, subtask) => (
-        <InlinePicker
-          kind="priority"
-          type="subtask"
-          current={subtask.priority}
-          projectId={subtask.projectId}
-          taskId={subtask.taskId}
-          subtaskId={subtask.id}
-          title={subtask.title}
-          assignedToId={subtask.assignedToId}
-          startDate={subtask.startDate}
-          dueDate={subtask.dueDate}
-          status={subtask.status}
-        />
-      ),
-      width: 130
-    },
-    {
-      title: "Status",
-      key: "status",
-      render: (_value, subtask) => (
-        <InlinePicker
-          kind="status"
-          type="subtask"
-          current={subtask.status}
-          projectId={subtask.projectId}
-          taskId={subtask.taskId}
-          subtaskId={subtask.id}
-        />
-      ),
-      width: 150
-    },
-    ...(showActions
-      ? [
-          {
-            title: "Actions",
-            key: "actions",
-            render: (_value: unknown, subtask: SubtaskListItemData) =>
-              canManageTask ? (
-                <span className="table-actions">
-                  <EditSubtaskModal projectId={subtask.projectId} taskId={subtask.taskId} users={users} subtask={subtask} />
-                  <ArchiveSubtaskForm projectId={subtask.projectId} taskId={subtask.taskId} subtaskId={subtask.id} />
-                </span>
-              ) : null,
-            width: 190
-          }
-        ]
-      : [])
-  ];
   const { columns, scrollX } = useResizableAntColumns(baseColumns, "project-task-ant-table-widths", 92);
-  const { columns: nestedColumns, scrollX: nestedScrollX } = useResizableAntColumns(
-    baseNestedColumns,
-    "project-subtask-ant-table-widths",
-    92
-  );
 
   return (
     <div className="ant-data-table-shell">
       <div className="ant-data-table-toolbar">
         <strong>Tasks ({rows.length})</strong>
         <Space wrap>
-          <Button onClick={clearFilters}>Reset filters</Button>
-          <Button onClick={clearAll}>Reset filters and sorters</Button>
+          <Button onClick={clearAll}>Reset sorter</Button>
         </Space>
       </div>
-      <Table<ProjectTaskAntRow>
+      <Table<ProjectTaskTableRow>
         bordered
         columns={columns}
-        dataSource={rows}
-        expandable={{
-          expandedRowRender: (row) =>
-            row.subtasks.length ? (
-              <Table<SubtaskListItemData>
-                bordered
-                columns={nestedColumns}
-                dataSource={row.subtasks}
-                pagination={false}
-                rowKey="id"
-                scroll={{ x: nestedScrollX }}
-                size="small"
-                tableLayout="fixed"
-              />
-            ) : (
-              <div className="team-empty-state">No sub-tasks</div>
-            ),
-          rowExpandable: (row) => true
-        }}
-        locale={{ emptyText: "No tasks match these filters." }}
+        dataSource={tableRows}
+        locale={{ emptyText: "No tasks yet." }}
         onChange={handleChange}
-        pagination={rows.length > 10 ? { pageSize: 10, showSizeChanger: true } : false}
-        rowClassName="project-task-ant-row"
+        pagination={false}
+        rowClassName={(row) => `project-task-ant-row ${row.kind === "subtask" ? "project-subtask-ant-row" : ""}`}
         rowKey="key"
         scroll={{ x: scrollX }}
         size="middle"

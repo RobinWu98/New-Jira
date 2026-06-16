@@ -312,7 +312,7 @@ export function WorkItemsAntTable({
         columns={columns}
         dataSource={groupedRows}
         onChange={handleChange}
-        pagination={groupByProject ? false : rows.length > 10 ? { pageSize: 10, showSizeChanger: true } : false}
+        pagination={false}
         rowKey="id"
         scroll={{ x: scrollX }}
         size="middle"

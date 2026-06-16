@@ -10,14 +10,14 @@ import {
   type TaskFormData,
   type TaskLogData
 } from "@/components/ProjectForms";
+import { DropdownArrowIcon } from "@/components/AntArrowIcons";
 import { canCreateTask, canManageTask, requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { syncOverdueWorkItems } from "@/lib/overdue";
-import { UiButton, UiButtonLink } from "@/components/UiControls";
 
 type ProjectDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ assignee?: string; priority?: string; q?: string; sort?: string; taskStatus?: string }>;
+  searchParams: Promise<{ taskStatus?: string }>;
 };
 
 type ProjectRow = {
@@ -88,32 +88,13 @@ type LogRow = {
   task_id: string;
 };
 
-type TaskPriorityFilter = "all" | "high" | "medium" | "low";
 type TaskStatusFilter = "active" | "overdue" | "done" | "all";
-type TaskSort = "default" | "due_date" | "priority" | "status" | "assignee" | "title" | "newest";
-
-const TASK_PRIORITY_LABELS: Record<TaskPriorityFilter, string> = {
-  all: "All priorities",
-  high: "High",
-  medium: "Medium",
-  low: "Low"
-};
 
 const TASK_STATUS_LABELS: Record<TaskStatusFilter, string> = {
   active: "Ongoing",
   overdue: "Overdue",
   done: "Completed",
   all: "View All"
-};
-
-const TASK_SORT_LABELS: Record<TaskSort, string> = {
-  default: "Priority + Due Date",
-  due_date: "Due Date",
-  priority: "Priority",
-  status: "Status",
-  assignee: "Assignee",
-  title: "Task A-Z",
-  newest: "Newest"
 };
 
 function formatDate(value: Date | string) {
@@ -136,6 +117,18 @@ function formatOptionalDate(value: Date | string | null) {
   return value ? formatDate(value) : "No date";
 }
 
+function getProjectDisplayStatus(project: Pick<ProjectRow, "ddl" | "status">) {
+  if (project.status === "done") {
+    return "Completed";
+  }
+
+  const dueDate = project.ddl instanceof Date ? project.ddl : new Date(`${project.ddl}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return dueDate < today ? "Overdue" : "Ongoing";
+}
+
 function formatDateTime(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value);
 
@@ -151,10 +144,6 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function normalizeTaskPriorityFilter(value: string | undefined): TaskPriorityFilter {
-  return value === "high" || value === "medium" || value === "low" ? value : "all";
-}
-
 function normalizeTaskStatusFilter(value: string | undefined): TaskStatusFilter {
   return value === "done" || value === "completed"
     ? "done"
@@ -165,59 +154,12 @@ function normalizeTaskStatusFilter(value: string | undefined): TaskStatusFilter 
         : "active";
 }
 
-function normalizeTaskSort(value: string | undefined): TaskSort {
-  return value === "due_date" ||
-    value === "priority" ||
-    value === "status" ||
-    value === "assignee" ||
-    value === "title" ||
-    value === "newest"
-    ? value
-    : "default";
-}
-
-function getDateTime(value: Date | string) {
-  return value instanceof Date ? value.getTime() : new Date(value).getTime();
-}
-
-function getNullableDateTime(value: Date | string | null) {
-  return value ? getDateTime(value) : Number.POSITIVE_INFINITY;
-}
-
-function getPriorityRank(priority: string) {
-  return priority === "high" ? 0 : priority === "medium" ? 1 : 2;
-}
-
-function getStatusRank(status: string) {
-  return status === "overdue" ? 0 : status === "in_progress" ? 1 : status === "todo" ? 2 : 3;
-}
-
 function getTaskHref(params: {
   projectId: string;
   status: TaskStatusFilter;
-  assigneeId: string;
-  priority: TaskPriorityFilter;
-  queryText: string;
-  sort: TaskSort;
 }) {
   const next = new URLSearchParams();
   next.set("taskStatus", params.status);
-
-  if (params.assigneeId) {
-    next.set("assignee", params.assigneeId);
-  }
-
-  if (params.priority !== "all") {
-    next.set("priority", params.priority);
-  }
-
-  if (params.queryText) {
-    next.set("q", params.queryText);
-  }
-
-  if (params.sort !== "default") {
-    next.set("sort", params.sort);
-  }
 
   return `/projects/${params.projectId}?${next.toString()}`;
 }
@@ -373,11 +315,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const user = await requireUser();
   const { id } = await params;
   const filters = await searchParams;
-  const selectedAssigneeId = filters.assignee ?? "";
-  const selectedPriority = normalizeTaskPriorityFilter(filters.priority);
   const selectedTaskStatus = normalizeTaskStatusFilter(filters.taskStatus);
-  const selectedTaskSort = normalizeTaskSort(filters.sort);
-  const queryText = (filters.q ?? "").trim();
 
   if (!isUuid(id)) {
     notFound();
@@ -527,129 +465,43 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   }));
   const userCanCreateTask = canCreateTask(user);
   const userCanManageTask = canManageTask(user);
-  const canShowTaskActions = true;
-  const selectedAssignee = selectedAssigneeId ? users.find((assignee) => assignee.id === selectedAssigneeId) : null;
   const taskCommentsById = groupComments(taskCommentsResult.rows, user);
   const subtaskCommentsById = groupComments(subtaskCommentsResult.rows, user);
   const taskLogsById = groupLogs(logsResult.rows.filter((log) => !log.subtask_id));
   const subtaskLogsById = groupLogs(logsResult.rows.filter((log) => Boolean(log.subtask_id)), true);
   const subtasksByTask = groupSubtasksByTask(subtasksResult.rows, project.id, subtaskCommentsById, subtaskLogsById);
-  const baseFilteredTasks = tasksResult.rows
-    .filter((task) => (selectedAssigneeId ? task.assigned_to_id === selectedAssigneeId : true))
-    .filter((task) => (selectedPriority === "all" ? true : task.priority === selectedPriority))
-    .filter((task) => {
-      if (!queryText) {
-        return true;
-      }
-
-      const needle = queryText.toLowerCase();
-      return [task.title, task.assigned_to_name ?? "", task.assigned_to_email].some((value) =>
-        value.toLowerCase().includes(needle)
-      );
-    });
   const taskGroups = {
-    active: baseFilteredTasks.filter((task) => task.status !== "done"),
-    overdue: baseFilteredTasks.filter((task) => task.status === "overdue"),
-    done: baseFilteredTasks.filter((task) => task.status === "done"),
-    all: baseFilteredTasks
+    active: tasksResult.rows.filter((task) => task.status !== "done"),
+    overdue: tasksResult.rows.filter((task) => task.status === "overdue"),
+    done: tasksResult.rows.filter((task) => task.status === "done"),
+    all: tasksResult.rows
   } satisfies Record<TaskStatusFilter, TaskRow[]>;
-  const filteredTasks = [...taskGroups[selectedTaskStatus]].sort((left, right) => {
-      if (selectedTaskSort === "due_date") {
-        return getNullableDateTime(left.due_date) - getNullableDateTime(right.due_date);
-      }
-
-      if (selectedTaskSort === "priority") {
-        return getPriorityRank(left.priority) - getPriorityRank(right.priority);
-      }
-
-      if (selectedTaskSort === "status") {
-        return getStatusRank(left.status) - getStatusRank(right.status);
-      }
-
-      if (selectedTaskSort === "assignee") {
-        const leftAssignee = left.assigned_to_name || left.assigned_to_email;
-        const rightAssignee = right.assigned_to_name || right.assigned_to_email;
-        return leftAssignee.localeCompare(rightAssignee);
-      }
-
-      if (selectedTaskSort === "title") {
-        return left.title.localeCompare(right.title);
-      }
-
-      if (selectedTaskSort === "newest") {
-        return getDateTime(right.created_at) - getDateTime(left.created_at);
-      }
-
-      return (
-        getPriorityRank(left.priority) - getPriorityRank(right.priority) ||
-        getNullableDateTime(left.due_date) - getNullableDateTime(right.due_date) ||
-        getStatusRank(left.status) - getStatusRank(right.status) ||
-        getDateTime(right.created_at) - getDateTime(left.created_at)
-      );
-    });
-  const activeFilterLabels = [
-    queryText ? `Search: ${queryText}` : null,
-    selectedAssignee ? `Assignee: ${selectedAssignee.label}` : null,
-    selectedPriority !== "all" ? `Priority: ${TASK_PRIORITY_LABELS[selectedPriority]}` : null,
-    selectedTaskSort !== "default" ? `Sort: ${TASK_SORT_LABELS[selectedTaskSort]}` : null
-  ].filter((label): label is string => Boolean(label));
+  const filteredTasks = taskGroups[selectedTaskStatus];
 
   return (
     <AppFrame shellClassName="project-shell" currentProjectId={project.id}>
-      <PageHeader title={project.name} />
-      <section className="panel">
-        <div className="section-toolbar">
-          <h2>Tasks View</h2>
-          <div className="toolbar-actions">
-            {userCanCreateTask ? <CreateTaskModal projectId={project.id} users={users} /> : null}
-          </div>
-        </div>
-        {project.description ? <p className="project-summary">{project.description}</p> : null}
-        <div className="meta-grid detail-meta">
-          <div>
-            <strong>Due Date</strong>
-            <span>{formatDate(project.ddl)}</span>
-          </div>
-          <div>
-            <strong>Open Days</strong>
-            <span>{formatOpenDays(project.created_at)}</span>
-          </div>
-          <div>
-            <strong>Status</strong>
-            <span>{project.status === "done" ? "Completed" : "Ongoing"}</span>
-          </div>
-        </div>
-      </section>
+      <PageHeader
+        title={project.name}
+        subtitle={project.description ? <span className="project-header-description">{project.description}</span> : undefined}
+      />
       <section className="panel">
         <div className="project-group-toolbar table-title-toolbar">
           <div className="task-table-title-row">
             <div className="task-table-title-main">
-              <span className={`project-keyword task-view-keyword task-view-keyword-${selectedTaskStatus}`}>
-                {TASK_STATUS_LABELS[selectedTaskStatus]} Tasks
-              </span>
-              {activeFilterLabels.length ? (
-                <span className="title-filter-chips">
-                  {activeFilterLabels.map((label) => (
-                    <span key={label}>{label}</span>
-                  ))}
-                </span>
-              ) : null}
+              {userCanCreateTask ? <CreateTaskModal projectId={project.id} users={users} /> : null}
             </div>
-            <nav className="table-view-switch" aria-label="Task table view">
-              <UiButton variant="secondary" className="table-view-trigger" type="button" aria-haspopup="true">
-                Table View: {TASK_STATUS_LABELS[selectedTaskStatus]} ({taskGroups[selectedTaskStatus].length})
-              </UiButton>
+            <details className="table-view-switch project-view-switch">
+              <summary className="button secondary table-view-trigger" aria-label="Task table view">
+                <span>Table View: {TASK_STATUS_LABELS[selectedTaskStatus]} ({taskGroups[selectedTaskStatus].length})</span>
+                <DropdownArrowIcon />
+              </summary>
               <div className="table-view-menu" role="menu">
                 {(["active", "overdue", "done", "all"] as TaskStatusFilter[]).map((status) => (
                   <a
                     className={selectedTaskStatus === status ? "is-active" : ""}
                     href={getTaskHref({
                       projectId: project.id,
-                      status,
-                      assigneeId: selectedAssigneeId,
-                      priority: selectedPriority,
-                      queryText,
-                      sort: selectedTaskSort
+                      status
                     })}
                     key={status}
                     role="menuitem"
@@ -658,54 +510,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
                   </a>
                 ))}
               </div>
-            </nav>
+            </details>
           </div>
-          <form className="title-filter-bar task-filter-bar" action={`/projects/${project.id}`}>
-            <input name="taskStatus" type="hidden" value={selectedTaskStatus} />
-            <div className="filter-field">
-              <label htmlFor="task-search">Search</label>
-              <input id="task-search" name="q" type="search" defaultValue={queryText} placeholder="Search tasks" />
-            </div>
-            <div className="filter-field">
-              <label htmlFor="task-assignee">Assignee</label>
-              <select id="task-assignee" name="assignee" defaultValue={selectedAssigneeId}>
-                <option value="">Everyone</option>
-                {users.map((assignee) => (
-                  <option value={assignee.id} key={assignee.id}>
-                    {assignee.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="filter-field">
-              <label htmlFor="task-priority">Priority</label>
-              <select id="task-priority" name="priority" defaultValue={selectedPriority}>
-                {(Object.keys(TASK_PRIORITY_LABELS) as TaskPriorityFilter[]).map((priority) => (
-                  <option value={priority} key={priority}>
-                    {TASK_PRIORITY_LABELS[priority]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="filter-field">
-              <label htmlFor="task-sort">Sort</label>
-              <select id="task-sort" name="sort" defaultValue={selectedTaskSort}>
-                {(Object.keys(TASK_SORT_LABELS) as TaskSort[]).map((sort) => (
-                  <option value={sort} key={sort}>
-                    {TASK_SORT_LABELS[sort]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="filter-actions">
-              <UiButton type="submit">
-                Apply
-              </UiButton>
-              <UiButtonLink variant="secondary" href={`/projects/${project.id}`}>
-                Reset
-              </UiButtonLink>
-            </div>
-          </form>
         </div>
         <ProjectTasksAntTable
           canManageTask={userCanManageTask}

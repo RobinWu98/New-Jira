@@ -92,7 +92,7 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
             },
             tabIndex: 0
           })}
-          pagination={users.length > 10 ? { pageSize: 10, showSizeChanger: true } : false}
+          pagination={false}
           rowKey="id"
           scroll={{ x: scrollX }}
           size="middle"

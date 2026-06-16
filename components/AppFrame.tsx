@@ -1,6 +1,7 @@
 import { logoutAction } from "@/lib/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { DisclosureArrowIcons, RightArrowIcon } from "./AntArrowIcons";
 import MakeTablesResizable from "./MakeTablesResizable";
 
 type ProjectNavRow = {
@@ -15,9 +16,7 @@ type AppFrameProps = {
   currentProjectId?: string;
 };
 
-function normalizeProjectStatus(status: string) {
-  return status === "done" ? "done" : "active";
-}
+type ProjectNavStatus = "active" | "overdue" | "done";
 
 function ProjectNavGroup({
   title,
@@ -26,13 +25,16 @@ function ProjectNavGroup({
   currentProjectId
 }: {
   title: string;
-  status: "active" | "done";
+  status: ProjectNavStatus;
   projects: ProjectNavRow[];
   currentProjectId?: string;
 }) {
   return (
-    <details className="leftbar-group" open={status === "active"}>
-      <summary className={`leftbar-heading leftbar-heading-${status}`}>{title}</summary>
+    <details className="leftbar-group" open={status !== "done"}>
+      <summary className={`leftbar-heading leftbar-heading-${status}`}>
+        <span>{title}</span>
+        <DisclosureArrowIcons />
+      </summary>
       {projects.length ? (
         <ul className="leftbar-list">
           {projects.map((project) => (
@@ -57,10 +59,23 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
   const user = await getCurrentUser();
   const [result, unreadResult] = await Promise.all([
     query<ProjectNavRow>(
-      `SELECT id, name, status
+      `SELECT
+         id,
+         name,
+         CASE
+           WHEN status <> 'done' AND ddl < current_date THEN 'overdue'
+           ELSE status
+         END AS status
        FROM projects
        WHERE archived_at IS NULL
-       ORDER BY ddl ASC, created_at DESC`
+       ORDER BY
+         CASE
+           WHEN status <> 'done' AND ddl < current_date THEN 0
+           WHEN status = 'active' THEN 1
+           ELSE 2
+         END,
+         ddl ASC,
+         created_at DESC`
     ),
     user
       ? query<{ count: string }>("SELECT COUNT(*)::text AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL", [
@@ -69,8 +84,9 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
       : Promise.resolve({ rows: [{ count: "0" }] })
   ]);
 
-  const activeProjects = result.rows.filter((project) => normalizeProjectStatus(project.status) === "active");
-  const doneProjects = result.rows.filter((project) => normalizeProjectStatus(project.status) === "done");
+  const activeProjects = result.rows.filter((project) => project.status === "active");
+  const overdueProjects = result.rows.filter((project) => project.status === "overdue");
+  const doneProjects = result.rows.filter((project) => project.status === "done");
   const shellClass = ["shell", shellClassName].filter(Boolean).join(" ");
   const unreadCount = Number(unreadResult.rows[0]?.count ?? 0);
 
@@ -119,9 +135,7 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
       </nav>
       <div className="leftnav">
         <span className="leftbar-handle" aria-hidden="true">
-          <svg viewBox="0 0 24 24">
-            <path d="m9 6 6 6-6 6" />
-          </svg>
+          <RightArrowIcon />
         </span>
         <aside className="leftbar" aria-label="Project navigation">
           <a className="leftbar-title" href="/projects">
@@ -131,6 +145,12 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
             title="Ongoing"
             status="active"
             projects={activeProjects}
+            currentProjectId={currentProjectId}
+          />
+          <ProjectNavGroup
+            title="Overdue"
+            status="overdue"
+            projects={overdueProjects}
             currentProjectId={currentProjectId}
           />
           <ProjectNavGroup

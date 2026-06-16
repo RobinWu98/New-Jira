@@ -240,19 +240,13 @@ textarea {
   transform: translateY(-50%);
 }
 
-.leftbar-handle svg {
-  width: 24px;
-  height: 24px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 3;
+.leftbar-handle .ant-arrow-icon {
+  font-size: 22px;
   transition: transform 160ms ease;
 }
 
-.leftnav:hover .leftbar-handle svg,
-.leftnav:focus-within .leftbar-handle svg {
+.leftnav:hover .leftbar-handle .ant-arrow-icon,
+.leftnav:focus-within .leftbar-handle .ant-arrow-icon {
   transform: rotate(180deg);
 }
 
@@ -290,27 +284,20 @@ textarea {
   display: none;
 }
 
-.leftbar-heading::after {
-  content: ">";
-  flex: 0 0 auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-weight: 700;
-}
-
 .leftbar-group[open] .leftbar-heading {
   margin-bottom: 8px;
 }
 
-.leftbar-group[open] .leftbar-heading::after {
-  transform: rotate(90deg);
-}
-
 .leftbar-heading-active {
-  background: var(--active-bg);
+  background: var(--done-bg);
 }
 
 .leftbar-heading-done {
-  background: var(--done-bg);
+  background: var(--active-bg);
+}
+
+.leftbar-heading-overdue {
+  background: var(--danger-bg);
 }
 
 .leftbar-list {
@@ -747,15 +734,20 @@ a.button {
 }
 
 .table-view-trigger {
+  display: inline-flex;
+  align-items: center;
   min-width: 210px;
   justify-content: space-between;
 }
 
-.table-view-trigger::after {
-  content: "v";
-  margin-left: 12px;
+.ant-arrow-icon {
+  flex: 0 0 auto;
   font-size: 12px;
-  font-weight: 900;
+  line-height: 1;
+}
+
+.table-view-trigger .ant-arrow-icon {
+  margin-left: 12px;
 }
 
 .table-view-menu {
@@ -772,7 +764,8 @@ a.button {
 }
 
 .table-view-switch:hover .table-view-menu,
-.table-view-switch:focus-within .table-view-menu {
+.table-view-switch:focus-within .table-view-menu,
+.table-view-switch[open] .table-view-menu {
   display: block;
 }
 
@@ -983,19 +976,8 @@ a.button {
   display: none;
 }
 
-.team-member-summary::after {
-  content: ">";
-  flex: 0 0 auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-weight: 700;
-}
-
 .team-member-block[open] .team-member-summary {
   border-bottom: 3px solid var(--line);
-}
-
-.team-member-block[open] .team-member-summary::after {
-  transform: rotate(90deg);
 }
 
 .team-member-summary span {
@@ -1210,16 +1192,26 @@ a.button {
   display: none;
 }
 
-.title-filter-disclosure summary::after {
-  content: ">";
-  color: #44546f;
+.disclosure-arrow-icons {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
   font-size: 12px;
-  font-weight: 800;
   line-height: 1;
 }
 
-.title-filter-disclosure[open] summary::after {
-  transform: rotate(90deg);
+.disclosure-arrow-icon-open {
+  display: none;
+}
+
+details[open] > summary .disclosure-arrow-icon-closed {
+  display: none;
+}
+
+details[open] > summary .disclosure-arrow-icon-open {
+  display: inline-block;
 }
 
 .title-filter-toggle {
@@ -1375,17 +1367,35 @@ a.button {
   font-size: 30px;
 }
 
-.project-ant-table-shell .ant-table-thead > tr > th,
+.project-ant-table-shell .ant-table-thead > tr > th {
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 21px;
+  font-weight: 800;
+}
+
 .ant-data-table-shell .ant-table-thead > tr > th {
   background: var(--surface-soft);
   color: var(--ink);
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 800;
 }
 
 .project-ant-table-shell .ant-table-tbody > tr > td,
 .ant-data-table-shell .ant-table-tbody > tr > td {
   vertical-align: middle;
+}
+
+.project-ant-table-shell .ant-table-tbody > tr > td,
+.project-ant-table-shell .ant-table-tbody .project-row-link,
+.project-ant-table-shell .ant-table-tbody .status-pill {
+  font-size: 20px;
+}
+
+.ant-data-table-shell .ant-table-tbody > tr > td,
+.ant-data-table-shell .ant-table-tbody .task-title-trigger,
+.ant-data-table-shell .ant-table-tbody .task-pill {
+  font-size: 18px;
 }
 
 .project-ant-table-shell .ant-table-tbody > tr:hover > td,
@@ -1396,7 +1406,11 @@ a.button {
 .project-ant-table-shell .ant-btn,
 .ant-data-table-shell .ant-btn {
   border-radius: 6px;
+  font-size: 20px;
   font-weight: 700;
+  height: auto;
+  min-height: 34px;
+  padding: 3px 10px;
 }
 
 .project-list-row > span,
@@ -1937,7 +1951,17 @@ a.button {
 
 .project-summary {
   margin-top: 0;
-  color: var(--muted);
+  color: #000000;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.project-header-description {
+  color: #000000;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .detail-meta {
@@ -2120,13 +2144,18 @@ textarea,
 }
 
 .leftbar-heading-active {
+  background: var(--done-bg);
+  color: #5b21b6;
+}
+
+.leftbar-heading-done {
   background: var(--active-bg);
   color: #067647;
 }
 
-.leftbar-heading-done {
-  background: var(--done-bg);
-  color: #5b21b6;
+.leftbar-heading-overdue {
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .leftbar-project-link {
@@ -2641,13 +2670,18 @@ a {
 }
 
 .leftbar-heading-active {
+  background: #eae6ff;
+  color: #403294;
+}
+
+.leftbar-heading-done {
   background: #e3fcef;
   color: #006644;
 }
 
-.leftbar-heading-done {
-  background: #eae6ff;
-  color: #403294;
+.leftbar-heading-overdue {
+  background: #ffebe6;
+  color: #ae2a19;
 }
 
 .masthead {
@@ -2870,6 +2904,7 @@ a:focus {
   color: #006644;
 }
 
+.project-keyword-overdue,
 .task-view-keyword-overdue,
 .status-overdue,
 .task-status-overdue {
@@ -3078,14 +3113,8 @@ body {
   transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
-.back-button svg {
-  width: 24px;
-  height: 24px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2.8;
+.back-button .ant-arrow-icon {
+  font-size: 20px;
 }
 
 .back-button:hover,
@@ -3253,6 +3282,50 @@ select {
 }
 
 .subtask-title-cell .task-title-trigger:hover {
+  color: #00875a;
+}
+
+.task-detail-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.subtask-create-button {
+  width: fit-content;
+  background: #0c66e4;
+  color: #ffffff;
+}
+
+.task-expand-button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.task-expand-button:disabled {
+  color: transparent;
+  cursor: default;
+}
+
+.project-subtask-ant-row > td {
+  background: #fbfcff;
+}
+
+.project-subtask-ant-row > td:first-child {
+  padding: 0 !important;
+}
+
+.project-subtask-ant-row .task-title-trigger {
+  padding-left: 16px;
+  color: #006644;
+}
+
+.project-subtask-ant-row .task-title-trigger:hover {
   color: #00875a;
 }
 
@@ -4516,12 +4589,23 @@ select {
   align-items: center;
 }
 
-.project-table-title-row .table-view-switch {
+.project-table-title-row .table-view-switch,
+.task-table-title-row .table-view-switch {
   margin: 0;
   padding: 0;
 }
 
-.project-table-title-row .table-view-trigger {
+.project-view-switch > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.project-view-switch > summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-table-title-row .table-view-trigger,
+.task-table-title-row .table-view-trigger {
   min-height: 34px;
   min-width: 170px;
   border: 1px solid #d4b106;
@@ -4532,14 +4616,51 @@ select {
   padding: 5px 10px;
 }
 
-.project-table-title-row .table-view-trigger::after {
+.project-table-title-row .table-view-trigger .ant-arrow-icon,
+.task-table-title-row .table-view-trigger .ant-arrow-icon {
   margin-left: 8px;
+}
+
+.dashboard-shell .dashboard-range-trigger {
+  min-height: 38px;
+  min-width: 190px;
+  border: 2px solid #0c66e4;
+  border-radius: 6px;
+  background: #e9f2ff;
+  box-shadow: 0 0 0 2px #ffffff, 0 8px 18px rgba(12, 102, 228, 0.14);
+  color: #172b4d;
+  padding: 7px 12px;
+}
+
+.dashboard-shell .dashboard-range-trigger:hover,
+.dashboard-shell .dashboard-range-trigger:focus-visible {
+  border-color: #0052cc;
+  background: #dbeafe;
+  box-shadow: 0 0 0 2px #ffffff, 0 10px 22px rgba(12, 102, 228, 0.2);
 }
 
 .project-table-title-row .table-view-menu {
   top: calc(100% + 4px);
   border-color: var(--table-line-strong);
   border-radius: 6px;
+}
+
+.project-shell .project-keyword-active,
+.project-ant-table-shell .status-active {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.project-shell .project-keyword-done,
+.project-ant-table-shell .status-done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.project-shell .project-keyword-overdue,
+.project-ant-table-shell .status-overdue {
+  background: #ffebe6;
+  color: #ae2a19;
 }
 
 .project-ant-table-shell {
@@ -4608,7 +4729,7 @@ select {
 .project-ant-table-shell .ant-table-thead > tr > th {
   background: #f5f8fb !important;
   color: #172b4d;
-  font-size: 15px;
+  font-size: 21px;
   font-weight: 750;
 }
 
@@ -4690,16 +4811,6 @@ select {
   border-top: 0;
   padding: 0;
   width: 100%;
-}
-
-.project-ant-table-shell .record-actions .ui-button,
-.project-ant-table-shell .record-actions .button,
-.project-ant-table-shell .record-actions button {
-  min-height: 26px;
-  border-width: 1px;
-  padding: 3px 9px;
-  font-size: 26px;
-  line-height: 1.2;
 }
 
 .project-ant-table-shell .ant-pagination {

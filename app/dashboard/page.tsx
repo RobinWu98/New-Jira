@@ -1,8 +1,9 @@
 import { AppFrame } from "@/components/AppFrame";
+import { DropdownArrowIcon } from "@/components/AntArrowIcons";
 import { PageHeader } from "@/components/PageHeader";
 import { type TaskCommentData, type TaskLogData, type UserOption } from "@/components/ProjectForms";
 import { WorkItemsAntTable, type WorkItemAntTableRow } from "@/components/WorkItemsAntTable";
-import { UiButtonLink } from "@/components/UiControls";
+import { UiButton } from "@/components/UiControls";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { syncOverdueWorkItems } from "@/lib/overdue";
@@ -57,9 +58,9 @@ type UserRow = {
 };
 
 const RANGE_LABELS: Record<WorkloadRange, string> = {
-  week: "This Week",
-  month: "This Month",
-  all: "All Assigned"
+  all: "All tasks",
+  month: "Due this month",
+  week: "Due this week"
 };
 
 function normalizeRange(value: string | undefined): WorkloadRange {
@@ -85,10 +86,6 @@ function addMonths(date: Date, months: number) {
   const next = new Date(date);
   next.setMonth(next.getMonth() + months);
   return next;
-}
-
-function toDateInput(value: Date) {
-  return value.toISOString().slice(0, 10);
 }
 
 function toOptionalDateInput(value: Date | string | null) {
@@ -223,23 +220,36 @@ function getRangeWindow(range: WorkloadRange) {
   return { start: null, end: null };
 }
 
+function getDateOnly(value: Date | string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(`${value}T00:00:00`);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isInRange(task: TaskRow, range: WorkloadRange) {
+  if (range === "all") {
+    return true;
+  }
+
+  const dueDate = getDateOnly(task.due_date);
+  const window = getRangeWindow(range);
+
+  return Boolean(dueDate && window.start && window.end && dueDate >= window.start && dueDate < window.end);
+}
+
+function getRangeHref(range: WorkloadRange) {
+  return `/dashboard?range=${range}`;
+}
+
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const user = await requireUser();
   const params = await searchParams;
   const range = normalizeRange(params.range);
-  const window = getRangeWindow(range);
 
   await syncOverdueWorkItems();
-
-  const values: unknown[] = [user.id];
-  const windowClause =
-    window.start && window.end
-      ? "AND tasks.due_date >= $2::date AND tasks.due_date < $3::date"
-      : "";
-
-  if (window.start && window.end) {
-    values.push(toDateInput(window.start), toDateInput(window.end));
-  }
 
   const [tasksResult, subtasksResult, usersResult] = await Promise.all([
     query<TaskRow>(
@@ -261,14 +271,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
      WHERE tasks.assigned_to_id = $1
        AND tasks.archived_at IS NULL
        AND projects.archived_at IS NULL
-       ${windowClause}
        ORDER BY
          CASE projects.status WHEN 'active' THEN 0 ELSE 1 END,
          tasks.due_date ASC NULLS LAST,
          CASE tasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          CASE tasks.status WHEN 'overdue' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'todo' THEN 2 ELSE 3 END,
          tasks.created_at DESC`,
-      values
+      [user.id]
     ),
     query<SubtaskRow>(
       `SELECT
@@ -291,13 +300,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
          AND subtasks.archived_at IS NULL
          AND tasks.archived_at IS NULL
          AND projects.archived_at IS NULL
-         ${windowClause}
        ORDER BY
-         tasks.due_date ASC NULLS LAST,
+         subtasks.due_date ASC NULLS LAST,
          CASE subtasks.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          CASE subtasks.status WHEN 'overdue' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'todo' THEN 2 ELSE 3 END,
          subtasks.created_at DESC`,
-      values
+      [user.id]
     ),
     query<UserRow>(
       "SELECT id, name, email::text AS email, created_at FROM users WHERE archived_at IS NULL ORDER BY name NULLS LAST, email"
@@ -305,7 +313,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   ]);
 
   // merge tasks and subtasks — treat them equally
-  const tasks = [...tasksResult.rows, ...subtasksResult.rows.map((s) => ({
+  const allTasks = [...tasksResult.rows, ...subtasksResult.rows.map((s) => ({
     id: s.id,
     project_id: s.project_id,
     title: s.title,
@@ -318,6 +326,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     start_date: s.start_date,
     due_date: s.due_date
   }))];
+  const rangeCounts = {
+    all: allTasks.length,
+    month: allTasks.filter((task) => isInRange(task, "month")).length,
+    week: allTasks.filter((task) => isInRange(task, "week")).length
+  } satisfies Record<WorkloadRange, number>;
+  const tasks = allTasks.filter((task) => isInRange(task, range));
   const mentionUsers = usersResult.rows.map((user) => ({
     id: user.id,
     label: user.name ? `${user.name} (${user.email})` : user.email,
@@ -371,17 +385,23 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <section className="panel">
         <div className="section-toolbar">
           <h2>My tasks ({taskRows.length})</h2>
-          <nav className="segmented-nav" aria-label="Dashboard range">
-            {(["all", "month", "week"] as WorkloadRange[]).map((option) => (
-              <UiButtonLink
-                variant="secondary"
-                className={range === option ? "is-active" : ""}
-                href={`/dashboard?range=${option}`}
-                key={option}
-              >
-                {RANGE_LABELS[option]}
-              </UiButtonLink>
-            ))}
+          <nav className="table-view-switch" aria-label="Dashboard task range">
+            <UiButton variant="secondary" className="table-view-trigger dashboard-range-trigger" type="button" aria-haspopup="true">
+              <span>{RANGE_LABELS[range]} ({rangeCounts[range]})</span>
+              <DropdownArrowIcon />
+            </UiButton>
+            <div className="table-view-menu" role="menu">
+              {(["all", "month", "week"] as WorkloadRange[]).map((option) => (
+                <a
+                  className={range === option ? "is-active" : ""}
+                  href={getRangeHref(option)}
+                  key={option}
+                  role="menuitem"
+                >
+                  {RANGE_LABELS[option]} ({rangeCounts[option]})
+                </a>
+              ))}
+            </div>
           </nav>
         </div>
         {taskRows.length ? (
