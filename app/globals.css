@@ -2024,6 +2024,14 @@ details[open] > summary .disclosure-arrow-icon-open {
   border-right: 2px solid var(--line);
 }
 
+.profile-table strong {
+  font-size: 21px;
+}
+
+.profile-table span {
+  font-size: 20px;
+}
+
 .small {
   color: var(--muted);
   font-size: 17px;
