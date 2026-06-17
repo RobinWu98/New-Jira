@@ -29,9 +29,9 @@ export type ProjectsAntTableRow = {
   completedTaskCount: number;
   remainingTaskCount: number;
   taskCount: number;
-  lastComment: string;
-  lastCommentCreatedAt: number;
-  lastCommentTitle: string;
+  lastUpdate: string;
+  lastUpdateAt: number;
+  lastUpdateTitle: string;
 };
 
 type ProjectsAntTableProps = {
@@ -74,7 +74,7 @@ export function ProjectsAntTable({ canEdit, canManage, currentUserId, projects, 
           {name}
         </a>
       ),
-      width: 220
+      width: 380
     },
     {
       title: "Open Days",
@@ -84,7 +84,7 @@ export function ProjectsAntTable({ canEdit, canManage, currentUserId, projects, 
       sorter: (left, right) => left.openDays - right.openDays,
       sortOrder: sortedInfo.columnKey === "openDays" ? sortedInfo.order : null,
       render: (_days: number, project) => project.openDaysLabel,
-      width: 108
+      width: 148
     },
     {
       title: "Due Date",
@@ -94,7 +94,7 @@ export function ProjectsAntTable({ canEdit, canManage, currentUserId, projects, 
       sorter: (left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime(),
       sortOrder: sortedInfo.columnKey === "dueDate" ? sortedInfo.order : null,
       render: (_date: string, project) => project.dueDateLabel,
-      width: 116
+      width: 156
     },
     {
       title: "Tasks",
@@ -108,22 +108,22 @@ export function ProjectsAntTable({ canEdit, canManage, currentUserId, projects, 
       sorter: (left, right) =>
         left.completedTaskCount - right.completedTaskCount || left.taskCount - right.taskCount,
       sortOrder: sortedInfo.columnKey === "tasks" ? sortedInfo.order : null,
-      width: 92
+      width: 116
     },
     {
-      title: "Last Comment",
-      dataIndex: "lastComment",
-      key: "lastComment",
+      title: "Last Update",
+      dataIndex: "lastUpdate",
+      key: "lastUpdate",
       align: "left",
       ellipsis: true,
-      render: (lastComment: string, project) => (
-        <span className="project-last-comment" title={project.lastCommentTitle}>
-          {lastComment}
+      render: (lastUpdate: string, project) => (
+        <span className="project-last-comment" title={project.lastUpdateTitle}>
+          {lastUpdate}
         </span>
       ),
-      sorter: (left, right) => left.lastCommentCreatedAt - right.lastCommentCreatedAt,
-      sortOrder: sortedInfo.columnKey === "lastComment" ? sortedInfo.order : null,
-      width: 230
+      sorter: (left, right) => left.lastUpdateAt - right.lastUpdateAt,
+      sortOrder: sortedInfo.columnKey === "lastUpdate" ? sortedInfo.order : null,
+      width: 172
     },
     {
       title: "Status",
@@ -131,7 +131,7 @@ export function ProjectsAntTable({ canEdit, canManage, currentUserId, projects, 
       key: "status",
       align: "left",
       render: (_status: ProjectsAntTableRow["status"], project) => <StatusPill status={project.status}>{project.statusLabel}</StatusPill>,
-      width: 118
+      width: 156
     },
     {
       title: "Actions",
@@ -149,24 +149,69 @@ export function ProjectsAntTable({ canEdit, canManage, currentUserId, projects, 
         ) : (
           <ViewProjectModal users={users} currentUserId={currentUserId} project={toProjectFormData(project)} />
         ),
-      width: 92
+      width: 132
     }
   ];
-  const { columns, scrollX } = useResizableAntColumns(baseColumns, "projects-ant-table-widths", 86);
+  const { columns, scrollX } = useResizableAntColumns(baseColumns, "projects-ant-table-widths-wide-v3", 86);
 
   return (
-    <div className="project-ant-table-shell">
-      <Table<ProjectsAntTableRow>
-        bordered
-        columns={columns}
-        dataSource={projects}
-        onChange={handleChange}
-        pagination={false}
-        rowKey="id"
-        scroll={{ x: scrollX }}
-        size="small"
-        tableLayout="fixed"
-      />
-    </div>
+    <>
+      <div className="project-ant-table-shell responsive-desktop-table">
+        <Table<ProjectsAntTableRow>
+          bordered
+          columns={columns}
+          dataSource={projects}
+          onChange={handleChange}
+          pagination={false}
+          rowKey="id"
+          scroll={{ x: scrollX }}
+          size="small"
+          tableLayout="fixed"
+        />
+      </div>
+      <div className="mobile-card-list project-mobile-list" aria-label="Projects">
+        {projects.map((project) => (
+          <article className="mobile-data-card" key={project.id}>
+            <div className="mobile-card-main">
+              <a className="mobile-card-title" href={`/projects/${project.id}`}>
+                {project.name}
+              </a>
+              <StatusPill status={project.status}>{project.statusLabel}</StatusPill>
+            </div>
+            <dl className="mobile-card-meta">
+              <div>
+                <dt>Open</dt>
+                <dd>{project.openDaysLabel}</dd>
+              </div>
+              <div>
+                <dt>Due</dt>
+                <dd>{project.dueDateLabel}</dd>
+              </div>
+              <div>
+                <dt>Tasks</dt>
+                <dd>{project.completedTaskCount}/{project.taskCount}</dd>
+              </div>
+              <div>
+                <dt>Updated</dt>
+                <dd>{project.lastUpdate}</dd>
+              </div>
+            </dl>
+            <div className="mobile-card-actions">
+              {canEdit ? (
+                <EditProjectModal
+                  users={users}
+                  currentUserId={currentUserId}
+                  project={toProjectFormData(project)}
+                  showActions={canManage}
+                  triggerKind="antd"
+                />
+              ) : (
+                <ViewProjectModal users={users} currentUserId={currentUserId} project={toProjectFormData(project)} />
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }

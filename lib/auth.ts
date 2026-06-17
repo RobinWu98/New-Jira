@@ -218,7 +218,7 @@ export function canManageProject(user: User) {
 }
 
 export function canCreateTask(user: User) {
-  return user.role === "admin" || user.role === "manager";
+  return user.role === "admin" || user.role === "manager" || user.role === "staff";
 }
 
 export function canManageTask(user: User) {

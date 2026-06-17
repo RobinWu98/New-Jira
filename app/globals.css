@@ -1932,7 +1932,7 @@ details[open] > summary .disclosure-arrow-icon-open {
 /* Inline picker dropdown used for priority/status editing */
 .inline-picker { position: relative; display: inline-block; }
 .inline-picker-button { border: 0; padding: 6px 10px; border-radius: 14px; font-weight: 700; cursor: pointer; min-width: 56px; }
-.picker-dropdown { position: absolute; right: 0; top: calc(100% + 6px); background: var(--panel); border: 1px solid var(--muted); box-shadow: 0 8px 20px rgba(0,0,0,0.08); padding: 6px; border-radius: 8px; z-index: 50; min-width: 160px; }
+.picker-dropdown { position: absolute; right: 0; top: calc(100% + 6px); background: #ffffff; border: 1px solid var(--muted); box-shadow: 0 8px 20px rgba(0,0,0,0.16); padding: 6px; border-radius: 8px; z-index: 10000; min-width: 160px; }
 .inline-picker-form { margin: 0; }
 .picker-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; cursor: pointer; border-radius: 6px; font-weight: 600; }
 .picker-item.is-active { outline: 2px solid rgba(0,0,0,0.06); }
@@ -1943,6 +1943,41 @@ details[open] > summary .disclosure-arrow-icon-open {
 .picker-item.task-status-in_progress { background: var(--success-bg); color: var(--ok); }
 .picker-item.task-status-overdue { background: var(--danger-bg); color: var(--danger); }
 .picker-item.task-status-done { background: var(--done-bg); color: var(--link); }
+
+.inline-picker-button.task-status-todo,
+.inline-picker-button.task-status-in_progress,
+.inline-picker-button.task-status-overdue,
+.inline-picker-button.task-status-done {
+  appearance: none;
+  display: inline-block;
+  border: 0;
+  border-radius: 3px;
+  padding: 2px 7px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-todo,
+.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-in_progress,
+.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-overdue,
+.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-done {
+  font-size: 18px;
+}
+
+.ant-data-table-shell .ant-table-cell:has(.inline-picker),
+.project-ant-table-shell .ant-table-cell:has(.inline-picker) {
+  overflow: visible !important;
+}
+
+.ant-data-table-shell .ant-table-tbody > tr:has(.inline-picker),
+.project-ant-table-shell .ant-table-tbody > tr:has(.inline-picker) {
+  position: relative;
+  z-index: 3;
+}
 
 
 .table-actions form {
@@ -3298,22 +3333,37 @@ select {
 }
 
 .task-expand-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 28px;
   min-width: 28px;
   height: 28px;
   padding: 0;
-  font-size: 18px;
-  font-weight: 800;
+  color: #44546f;
   line-height: 1;
 }
 
-.task-expand-button:disabled {
-  color: transparent;
+.task-expand-button .ant-arrow-icon {
+  font-size: 13px;
+}
+
+.task-expand-placeholder {
+  opacity: 0.45;
   cursor: default;
+  pointer-events: none;
 }
 
 .project-subtask-ant-row > td {
   background: #fbfcff;
+}
+
+.project-task-ant-row.can-update-status > td {
+  background: #f0fdf4 !important;
+}
+
+.project-task-ant-row.can-update-status:hover > td {
+  background: #dcfce7 !important;
 }
 
 .project-subtask-ant-row > td:first-child {
@@ -3744,6 +3794,40 @@ select {
   gap: 16px;
 }
 
+.team-person-table-list {
+  display: grid;
+  gap: 18px;
+}
+
+.team-person-table {
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.team-person-table .section-toolbar {
+  border: 0;
+  border-radius: 0;
+  padding: 0 0 8px;
+  background: transparent;
+}
+
+.team-person-table .section-toolbar h2 {
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.team-person-table .ant-data-table-shell {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.team-person-table .ant-data-table-toolbar {
+  display: none;
+}
+
 .team-member-card {
   min-width: 0;
   border: 1px solid var(--line);
@@ -3959,6 +4043,30 @@ select {
   padding: 8px 10px;
   font-weight: 800;
   text-transform: capitalize;
+}
+
+.readonly-work-item-form {
+  display: grid;
+  gap: 14px;
+}
+
+.readonly-work-item-form .form-row > span {
+  color: #44546f;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.readonly-work-item-form .readonly-field {
+  color: #172b4d;
+  font-weight: 400;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.readonly-work-item-form .readonly-description {
+  align-items: flex-start;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .task-detail-tabs {
@@ -4370,6 +4478,13 @@ select {
     var(--paper);
 }
 
+.team-shell .team-person-table,
+.team-shell .team-person-table:nth-of-type(2n),
+.team-shell .team-person-table:nth-of-type(3n) {
+  border-left: 0 !important;
+  background: transparent !important;
+}
+
 .section-toolbar,
 .project-group-toolbar,
 .person-toolbar {
@@ -4646,19 +4761,22 @@ select {
 }
 
 .project-shell .project-keyword-active,
-.project-ant-table-shell .status-active {
+.project-ant-table-shell .status-active,
+.modal-panel .status-active {
   background: #f3e8ff;
   color: #6b21a8;
 }
 
 .project-shell .project-keyword-done,
-.project-ant-table-shell .status-done {
+.project-ant-table-shell .status-done,
+.modal-panel .status-done {
   background: #dcfce7;
   color: #166534;
 }
 
 .project-shell .project-keyword-overdue,
-.project-ant-table-shell .status-overdue {
+.project-ant-table-shell .status-overdue,
+.modal-panel .status-overdue {
   background: #ffebe6;
   color: #ae2a19;
 }
@@ -4727,10 +4845,50 @@ select {
 }
 
 .project-ant-table-shell .ant-table-thead > tr > th {
-  background: #f5f8fb !important;
-  color: #172b4d;
+  background: #0c66e4 !important;
+  color: #ffffff !important;
   font-size: 21px;
   font-weight: 750;
+}
+
+.ant-data-table-shell .ant-table-thead > tr > th {
+  background: #0c66e4 !important;
+  color: #ffffff !important;
+}
+
+.project-ant-table-shell .ant-table-thead > tr > th .ant-table-column-sorter,
+.project-ant-table-shell .ant-table-thead > tr > th .ant-table-filter-trigger,
+.ant-data-table-shell .ant-table-thead > tr > th .ant-table-column-sorter,
+.ant-data-table-shell .ant-table-thead > tr > th .ant-table-filter-trigger {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.project-ant-table-shell .ant-table-filter-column,
+.ant-data-table-shell .ant-table-filter-column {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.project-ant-table-shell .ant-table-filter-column .ant-table-column-sorters,
+.ant-data-table-shell .ant-table-filter-column .ant-table-column-sorters {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.project-ant-table-shell .ant-table-thead > tr > th .ant-table-filter-trigger,
+.ant-data-table-shell .ant-table-thead > tr > th .ant-table-filter-trigger {
+  position: relative;
+  z-index: 8;
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+
+.project-ant-table-shell .ant-table-thead > tr > th .ant-table-column-sorter-up.active,
+.project-ant-table-shell .ant-table-thead > tr > th .ant-table-column-sorter-down.active,
+.ant-data-table-shell .ant-table-thead > tr > th .ant-table-column-sorter-up.active,
+.ant-data-table-shell .ant-table-thead > tr > th .ant-table-column-sorter-down.active {
+  color: #ffffff;
 }
 
 .project-ant-table-shell .ant-table-column-sorters {
@@ -4770,7 +4928,7 @@ select {
   width: 10px;
   cursor: col-resize;
   touch-action: none;
-  z-index: 5;
+  z-index: 2;
 }
 
 .resizable-ant-column-handle::after {
@@ -4869,5 +5027,295 @@ select {
 
   .modal-panel {
     max-height: calc(100dvh - 40px);
+  }
+}
+
+.team-name-search {
+  margin-bottom: 14px;
+  width: min(360px, 100%);
+}
+
+.team-name-search .ant-input-affix-wrapper {
+  border-color: #c7d5e8;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.team-person-table-list {
+  gap: 22px;
+}
+
+.team-shell .team-person-table,
+.team-shell .team-person-table:nth-of-type(2n),
+.team-shell .team-person-table:nth-of-type(3n) {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.team-shell .team-person-table .team-person-heading {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 0 10px;
+}
+
+.team-shell .team-person-heading h2 {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border-left: 5px solid #0c66e4;
+  color: #172b4d;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.15;
+  padding-left: 10px;
+}
+
+.team-shell .team-person-heading h2 mark {
+  border-radius: 4px;
+  background: #fff0b3;
+  color: inherit;
+  padding: 0 2px;
+}
+
+.team-shell .team-person-table .ant-data-table-shell {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.team-shell .team-person-table .ant-table-wrapper {
+  background: transparent;
+}
+
+.team-shell .team-person-table .ant-table {
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.team-shell .team-person-table .ant-data-table-toolbar {
+  display: none;
+}
+
+.team-person-empty,
+.team-search-empty {
+  margin-bottom: 0;
+}
+
+.admin-users-table-shell {
+  padding: 8px;
+}
+
+.admin-users-table-shell .ant-table-thead > tr > th {
+  font-size: 14px !important;
+  padding: 8px 10px !important;
+}
+
+.admin-users-table-shell .ant-table-tbody > tr > td {
+  font-size: 14px;
+  padding: 8px 10px !important;
+}
+
+.admin-users-table-shell .ant-btn {
+  min-height: 30px;
+  padding: 3px 8px;
+}
+
+.mobile-card-list {
+  display: none;
+}
+
+.mobile-data-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--table-line-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.mobile-card-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mobile-card-title,
+.mobile-card-title-wrap .task-title-trigger,
+.work-items-mobile-list .task-title-trigger {
+  color: #172b4d;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.25;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.mobile-card-title-wrap {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.mobile-card-subtitle,
+.mobile-card-kicker {
+  color: #626f86;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.mobile-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.mobile-card-meta div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 6px;
+  background: #f7f8fa;
+  padding: 8px;
+}
+
+.mobile-card-meta dt {
+  color: #626f86;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.mobile-card-meta dd {
+  margin: 0;
+  color: #172b4d;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mobile-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mobile-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mobile-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.mobile-filter-bar label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mobile-filter-bar span {
+  color: #626f86;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.mobile-filter-bar select {
+  min-height: 38px;
+  margin: 0;
+  border-color: #c7d5e8;
+  background: #ffffff;
+}
+
+.project-tasks-mobile-list .mobile-data-card.is-subtask {
+  margin-left: 18px;
+  border-left: 4px solid #c7d5e8;
+  background: #fbfcff;
+}
+
+.project-tasks-mobile-list .mobile-data-card.can-update-status {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+@media (min-width: 1180px) {
+  .project-shell,
+  .dashboard-shell,
+  .team-shell {
+    width: min(1680px, calc(100vw - 72px));
+  }
+}
+
+@media (min-width: 1500px) {
+  .project-shell,
+  .dashboard-shell,
+  .team-shell {
+    width: min(1840px, calc(100vw - 96px));
+  }
+}
+
+@media (max-width: 760px) {
+  .responsive-desktop-table {
+    display: none;
+  }
+
+  .mobile-card-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-card-main {
+    align-items: flex-start;
+  }
+
+  .mobile-card-actions {
+    justify-content: stretch;
+  }
+
+  .mobile-card-actions .ant-btn,
+  .mobile-card-actions .button {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .mobile-list-toolbar .ant-btn {
+    min-height: 38px;
+  }
+
+  .mobile-filter-bar .ant-btn {
+    min-height: 38px;
+  }
+
+  .team-shell .team-person-table .mobile-card-list {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .mobile-card-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .project-tasks-mobile-list .mobile-data-card.is-subtask {
+    margin-left: 10px;
   }
 }

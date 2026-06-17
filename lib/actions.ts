@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  canManageTask,
   clearTwoFactorChallenge,
   clearTwoFactorTrust,
   createSession,
@@ -1014,11 +1015,19 @@ export async function updateTaskStatusAction(_: AuthActionState, formData: FormD
     return { error: "Task is missing." };
   }
 
-  const currentResult = await query<{ status: string }>(
-    "SELECT status FROM tasks WHERE id = $1 AND project_id = $2 AND archived_at IS NULL LIMIT 1",
+  const currentResult = await query<{ assigned_to_id: string; status: string }>(
+    "SELECT assigned_to_id, status FROM tasks WHERE id = $1 AND project_id = $2 AND archived_at IS NULL LIMIT 1",
     [taskId, projectId]
   );
   const current = currentResult.rows[0];
+
+  if (!current) {
+    return { error: "Task was not found." };
+  }
+
+  if (!canManageTask(user) && current.assigned_to_id !== user.id) {
+    return { error: "You can only update the status of tasks assigned to you." };
+  }
 
   const result = await query<{
     id: string;
@@ -1084,8 +1093,8 @@ export async function updateSubtaskStatusAction(_: AuthActionState, formData: Fo
     return { error: "Sub-task is missing." };
   }
 
-  const currentResult = await query<{ status: string }>(
-    `SELECT subtasks.status
+  const currentResult = await query<{ assigned_to_id: string; status: string }>(
+    `SELECT subtasks.assigned_to_id, subtasks.status
      FROM subtasks
      JOIN tasks ON tasks.id = subtasks.task_id
      WHERE subtasks.id = $1
@@ -1097,6 +1106,14 @@ export async function updateSubtaskStatusAction(_: AuthActionState, formData: Fo
     [subtaskId, taskId, projectId]
   );
   const current = currentResult.rows[0];
+
+  if (!current) {
+    return { error: "Sub-task was not found." };
+  }
+
+  if (!canManageTask(user) && current.assigned_to_id !== user.id) {
+    return { error: "You can only update the status of sub-tasks assigned to you." };
+  }
 
   const result = await query<{
     id: string;

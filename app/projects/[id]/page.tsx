@@ -516,6 +516,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <ProjectTasksAntTable
           canManageTask={userCanManageTask}
           canUpdateStatus
+          currentUserId={user.id}
           rows={filteredTasks.map((task) => {
             const taskData = toTaskListItemData(
                 project.id,
