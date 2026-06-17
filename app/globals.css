@@ -1962,6 +1962,13 @@ details[open] > summary .disclosure-arrow-icon-open {
   text-transform: uppercase;
 }
 
+.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-todo,
+.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-in_progress,
+.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-overdue,
+.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-done {
+  font-size: 18px;
+}
+
 .ant-data-table-shell .ant-table-cell:has(.inline-picker),
 .project-ant-table-shell .ant-table-cell:has(.inline-picker) {
   overflow: visible !important;
