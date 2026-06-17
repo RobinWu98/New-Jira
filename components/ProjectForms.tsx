@@ -1519,7 +1519,8 @@ export function ProjectTasksAntTable({
   const [sortedInfo, setSortedInfo] = useState<SorterResult<ProjectTaskTableRow>>({});
   const showActions = canManageTask || canUpdateStatus;
   const canUpdateRowStatus = (_row?: ProjectTaskTableRow) => canUpdateStatus;
-  const isStaffEditableRow = (_row?: ProjectTaskTableRow) => !canManageTask && canUpdateStatus;
+  const isAssignedToCurrentUser = (row: ProjectTaskTableRow) =>
+    row.kind === "task" ? row.task.assignedToId === currentUserId : row.subtask.assignedToId === currentUserId;
 
   const clearAll = () => {
     setSortedInfo({});
@@ -1814,7 +1815,7 @@ export function ProjectTasksAntTable({
           onChange={handleChange}
           pagination={false}
           rowClassName={(row) =>
-            `project-task-ant-row${row.kind === "subtask" ? " project-subtask-ant-row" : ""}${isStaffEditableRow(row) ? " can-update-status" : ""}`
+            `project-task-ant-row${row.kind === "subtask" ? " project-subtask-ant-row" : ""}${isAssignedToCurrentUser(row) ? " can-update-status" : ""}`
           }
           rowKey="key"
           scroll={{ x: scrollX }}
@@ -1833,7 +1834,7 @@ export function ProjectTasksAntTable({
             const task = isTask ? row.task : row.subtask;
 
             return (
-              <article className={`mobile-data-card${isTask ? "" : " is-subtask"}${isStaffEditableRow(row) ? " can-update-status" : ""}`} key={row.key}>
+              <article className={`mobile-data-card${isTask ? "" : " is-subtask"}${isAssignedToCurrentUser(row) ? " can-update-status" : ""}`} key={row.key}>
                 <div className="mobile-card-main">
                   {isTask ? (
                     row.subtasks.length ? (
