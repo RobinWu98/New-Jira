@@ -3016,18 +3016,26 @@ a:focus {
 }
 
 .modal-backdrop {
-  background: rgba(9, 30, 66, 0.42);
+  background: rgba(9, 30, 66, 0.68);
 }
 
 .modal-panel {
+  border: 2px solid #172b4d;
+  background: #ffffff;
   width: min(720px, 100%);
   border-radius: 8px;
   padding: 24px;
+  box-shadow: 0 24px 60px rgba(9, 30, 66, 0.28);
 }
 
 .modal-header {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid #dfe1e6;
+  background: #ffffff;
   padding-bottom: 14px;
+}
+
+.modal-header h2 {
+  color: #172b4d;
 }
 
 .task-detail-meta-grid div {
@@ -4059,12 +4067,15 @@ select {
 }
 
 .readonly-work-item-form .form-row > span {
-  color: #44546f;
-  font-size: 13px;
-  font-weight: 400;
+  color: #172b4d;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .readonly-work-item-form .readonly-field {
+  border-color: #b6c2cf;
+  background: #ffffff;
   color: #172b4d;
   font-weight: 400;
   text-transform: none;

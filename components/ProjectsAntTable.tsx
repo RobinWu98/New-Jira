@@ -44,6 +44,11 @@ type ProjectsAntTableProps = {
 
 export function ProjectsAntTable({ canEdit, canManage, currentUserId, projects, users }: ProjectsAntTableProps) {
   const [sortedInfo, setSortedInfo] = useState<SorterResult<ProjectsAntTableRow>>({});
+  const statusRank: Record<ProjectsAntTableRow["status"], number> = {
+    overdue: 0,
+    active: 1,
+    done: 2
+  };
 
   const handleChange: TableProps<ProjectsAntTableRow>["onChange"] = (_pagination, _filters, sorter) => {
     setSortedInfo(Array.isArray(sorter) ? sorter[0] ?? {} : sorter);
@@ -132,6 +137,8 @@ export function ProjectsAntTable({ canEdit, canManage, currentUserId, projects, 
       key: "status",
       align: "left",
       render: (_status: ProjectsAntTableRow["status"], project) => <StatusPill status={project.status}>{project.statusLabel}</StatusPill>,
+      sorter: (left, right) => statusRank[left.status] - statusRank[right.status],
+      sortOrder: sortedInfo.columnKey === "status" ? sortedInfo.order : null,
       width: 156
     },
     {
