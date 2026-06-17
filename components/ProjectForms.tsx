@@ -80,6 +80,8 @@ export type TaskListItemData = TaskFormData & {
   assignedTo: string;
   startLabel: string;
   dueLabel: string;
+  lastUpdate: string;
+  lastUpdateAt: number;
   projectName: string;
   comments?: TaskCommentData[];
   logs?: TaskLogData[];
@@ -89,6 +91,8 @@ export type SubtaskListItemData = SubtaskFormData & {
   assignedTo: string;
   startLabel: string;
   dueLabel: string;
+  lastUpdate: string;
+  lastUpdateAt: number;
   comments?: TaskCommentData[];
   logs?: TaskLogData[];
 };
@@ -1590,6 +1594,7 @@ export function ProjectTasksAntTable({
 
   const getRowStartDate = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.startDate : row.subtask.startDate);
   const getRowDueDate = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.dueDate : row.subtask.dueDate);
+  const getRowLastUpdateAt = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.lastUpdateAt : row.subtask.lastUpdateAt);
   const getRowPriority = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.priority : row.subtask.priority);
   const getRowStatus = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.status : row.subtask.status);
 
@@ -1600,6 +1605,10 @@ export function ProjectTasksAntTable({
 
     if (sortedInfo.columnKey === "dueDate") {
       return taskDateRank(getRowDueDate(row));
+    }
+
+    if (sortedInfo.columnKey === "lastUpdate") {
+      return getRowLastUpdateAt(row);
     }
 
     if (sortedInfo.columnKey === "priority") {
@@ -1695,6 +1704,14 @@ export function ProjectTasksAntTable({
       sorter: true,
       sortOrder: sortedInfo.columnKey === "dueDate" ? sortedInfo.order : null,
       width: 148
+    },
+    {
+      title: "Last Update",
+      key: "lastUpdate",
+      render: (_value, row) => (row.kind === "task" ? row.task.lastUpdate : row.subtask.lastUpdate),
+      sorter: true,
+      sortOrder: sortedInfo.columnKey === "lastUpdate" ? sortedInfo.order : null,
+      width: 168
     },
     {
       title: "Priority",
@@ -1796,7 +1813,7 @@ export function ProjectTasksAntTable({
       : [])
   ];
 
-  const { columns, scrollX } = useResizableAntColumns(baseColumns, "project-task-ant-table-widths-wide-v2", 92);
+  const { columns, scrollX } = useResizableAntColumns(baseColumns, "project-task-ant-table-widths-wide-v3", 92);
 
   return (
     <>
@@ -1870,6 +1887,10 @@ export function ProjectTasksAntTable({
                   <div>
                     <dt>Due</dt>
                     <dd>{task.dueLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>Last Update</dt>
+                    <dd>{task.lastUpdate}</dd>
                   </div>
                   <div>
                     <dt>Priority</dt>
