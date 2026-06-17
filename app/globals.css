@@ -4650,7 +4650,7 @@ select {
 }
 
 .modal-panel {
-  font-size: calc(1em + 2px);
+  font-size: calc(1em + 4px);
   max-height: calc(100dvh - 104px);
   overflow: auto;
   overscroll-behavior: contain;
