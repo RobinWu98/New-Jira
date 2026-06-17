@@ -57,6 +57,7 @@ type SubtaskRow = {
   id: string;
   task_id: string;
   title: string;
+  description: string | null;
   start_date: Date | string | null;
   due_date: Date | string | null;
   priority: string;
@@ -207,6 +208,7 @@ function toSubtaskListItemData(
     projectId,
     taskId: subtask.task_id,
     title: subtask.title,
+    description: subtask.description ?? "",
     assignedToId: subtask.assigned_to_id,
     startDate: subtask.start_date ? toDateInput(subtask.start_date) : "",
     dueDate: subtask.due_date ? toDateInput(subtask.due_date) : "",
@@ -372,6 +374,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
          subtasks.id,
          subtasks.task_id,
          subtasks.title,
+         subtasks.description,
          subtasks.start_date,
          subtasks.due_date,
          subtasks.priority,

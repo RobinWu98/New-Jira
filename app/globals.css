@@ -1754,6 +1754,7 @@ details[open] > summary .disclosure-arrow-icon-open {
 
 .task-detail-modal {
   display: grid;
+  font-size: 15px;
   gap: 18px;
 }
 
@@ -1959,13 +1960,6 @@ details[open] > summary .disclosure-arrow-icon-open {
   line-height: 1.2;
   min-width: 0;
   text-transform: uppercase;
-}
-
-.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-todo,
-.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-in_progress,
-.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-overdue,
-.ant-data-table-shell .ant-table-tbody .inline-picker-button.task-status-done {
-  font-size: 18px;
 }
 
 .ant-data-table-shell .ant-table-cell:has(.inline-picker),

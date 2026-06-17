@@ -4,7 +4,6 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  canManageTask,
   clearTwoFactorChallenge,
   clearTwoFactorTrust,
   createSession,
@@ -688,6 +687,7 @@ export async function createSubtaskAction(_: AuthActionState, formData: FormData
   const projectId = asString(formData, "projectId");
   const taskId = asString(formData, "taskId");
   const title = asString(formData, "title");
+  const descriptionInput = asString(formData, "description");
   const assignedToId = asString(formData, "assignedToId");
   const startDate = asString(formData, "startDate");
   const dueDate = asString(formData, "dueDate");
@@ -728,8 +728,10 @@ export async function createSubtaskAction(_: AuthActionState, formData: FormData
     return { error: "Assigned user is invalid." };
   }
 
+  const description = descriptionInput || defaultTaskDescription(title);
+
   const result = await query<{ id: string }>(
-    `INSERT INTO subtasks (task_id, title, assigned_to_id, start_date, due_date, priority, status)
+    `INSERT INTO subtasks (task_id, title, description, assigned_to_id, start_date, due_date, priority, status)
      VALUES (
        $1,
        $2,
@@ -737,14 +739,15 @@ export async function createSubtaskAction(_: AuthActionState, formData: FormData
        $4,
        $5,
        $6,
+       $7,
        CASE
-         WHEN $7::text <> 'done' AND $5::date IS NOT NULL AND $5::date < current_date THEN 'overdue'
-         WHEN $7::text = 'overdue' THEN 'todo'
-         ELSE $7::text
+         WHEN $8::text <> 'done' AND $6::date IS NOT NULL AND $6::date < current_date THEN 'overdue'
+         WHEN $8::text = 'overdue' THEN 'todo'
+         ELSE $8::text
        END
      )
      RETURNING id`,
-    [taskId, title, assignedToId, startDate || null, dueDate || null, priority, status]
+    [taskId, title, description, assignedToId, startDate || null, dueDate || null, priority, status]
   );
   await createWorkItemLog({
     action: "created",
@@ -765,6 +768,7 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
   const taskId = asString(formData, "taskId");
   const subtaskId = asString(formData, "subtaskId");
   const title = asString(formData, "title");
+  const descriptionInput = asString(formData, "description");
   const assignedToId = asString(formData, "assignedToId");
   const startDate = asString(formData, "startDate");
   const dueDate = asString(formData, "dueDate");
@@ -787,6 +791,8 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
     return { error: "Sub-task due date cannot be earlier than the start date." };
   }
 
+  const description = descriptionInput || defaultTaskDescription(title);
+
   const assigneeResult = await query<{ email: string; id: string; name: string | null }>(
     "SELECT id, name, email::text AS email FROM users WHERE id = $1 AND archived_at IS NULL LIMIT 1",
     [assignedToId]
@@ -801,6 +807,7 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
     assigned_to_email: string;
     assigned_to_id: string;
     assigned_to_name: string | null;
+    description: string | null;
     due_date: Date | string | null;
     priority: string;
     start_date: Date | string | null;
@@ -809,6 +816,7 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
   }>(
     `SELECT
        subtasks.title,
+       subtasks.description,
        subtasks.assigned_to_id,
        users.name AS assigned_to_name,
        users.email::text AS assigned_to_email,
@@ -836,25 +844,26 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
   const result = await query<{ id: string; status: string }>(
     `UPDATE subtasks
      SET title = $1,
-         assigned_to_id = $2,
-         start_date = $3,
-         due_date = $4,
-         priority = $5,
+         description = $2,
+         assigned_to_id = $3,
+         start_date = $4,
+         due_date = $5,
+         priority = $6,
          status = CASE
-           WHEN $6::text <> 'done' AND $4::date IS NOT NULL AND $4::date < current_date THEN 'overdue'
-           WHEN $6::text = 'overdue' THEN 'todo'
-           ELSE $6::text
+           WHEN $7::text <> 'done' AND $5::date IS NOT NULL AND $5::date < current_date THEN 'overdue'
+           WHEN $7::text = 'overdue' THEN 'todo'
+           ELSE $7::text
          END,
          updated_at = now()
      FROM tasks
-     WHERE subtasks.id = $7
-       AND subtasks.task_id = $8
+     WHERE subtasks.id = $8
+       AND subtasks.task_id = $9
        AND tasks.id = subtasks.task_id
-       AND tasks.project_id = $9
+       AND tasks.project_id = $10
        AND subtasks.archived_at IS NULL
        AND tasks.archived_at IS NULL
      RETURNING subtasks.id, subtasks.status`,
-    [title, assignedToId, startDate || null, dueDate || null, priority, status, subtaskId, taskId, projectId]
+    [title, description, assignedToId, startDate || null, dueDate || null, priority, status, subtaskId, taskId, projectId]
   );
 
   if (!result.rows[0]) {
@@ -864,6 +873,7 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
   const logs = getWorkItemChangeLogs({
     assignedTo: assignee,
     current,
+    description,
     dueDate,
     priority,
     startDate,
@@ -1025,10 +1035,6 @@ export async function updateTaskStatusAction(_: AuthActionState, formData: FormD
     return { error: "Task was not found." };
   }
 
-  if (!canManageTask(user) && current.assigned_to_id !== user.id) {
-    return { error: "You can only update the status of tasks assigned to you." };
-  }
-
   const result = await query<{
     id: string;
     title: string;
@@ -1109,10 +1115,6 @@ export async function updateSubtaskStatusAction(_: AuthActionState, formData: Fo
 
   if (!current) {
     return { error: "Sub-task was not found." };
-  }
-
-  if (!canManageTask(user) && current.assigned_to_id !== user.id) {
-    return { error: "You can only update the status of sub-tasks assigned to you." };
   }
 
   const result = await query<{

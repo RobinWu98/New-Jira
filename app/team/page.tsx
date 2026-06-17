@@ -17,6 +17,7 @@ type TeamMemberRow = {
 type TeamWorkRow = {
   assigned_to_email: string;
   assigned_to_name: string | null;
+  description: string | null;
   due_date: Date | string | null;
   id: string;
   project_id: string;
@@ -75,7 +76,7 @@ function toTableRow(work: TeamWorkRow, mentionUsers: UserOption[]): WorkItemAntT
       projectId: work.project_id,
       type: work.type,
       title: work.title,
-      description: "",
+      description: work.description ?? "",
       projectName: work.project_name,
       assignedTo: work.assigned_to_name || work.assigned_to_email,
       startDate: work.start_date ? formatDate(work.start_date) : "No date",
@@ -106,6 +107,7 @@ export default async function TeamPage() {
          tasks.id,
          'task'::text AS type,
          tasks.title,
+         tasks.description,
          tasks.start_date,
          tasks.due_date,
          projects.id AS project_id,
@@ -125,6 +127,7 @@ export default async function TeamPage() {
          subtasks.id,
          'subtask'::text AS type,
          subtasks.title,
+         subtasks.description,
          subtasks.start_date,
          subtasks.due_date,
          projects.id AS project_id,

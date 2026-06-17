@@ -46,6 +46,7 @@ export type ProjectFormData = {
   ownerId: string;
   status: string;
   completedTaskCount?: number;
+  lastUpdate?: string;
   remainingTaskCount?: number;
   totalTaskCount?: number;
 };
@@ -67,6 +68,7 @@ export type SubtaskFormData = {
   projectId: string;
   taskId: string;
   title: string;
+  description: string;
   assignedToId: string;
   startDate: string;
   dueDate: string;
@@ -574,6 +576,12 @@ function ProjectForm({
             <div className="readonly-field">{owner}</div>
           </div>
           <div className="form-row">
+            <span>Last Update</span>
+            <div className="readonly-field">{project.lastUpdate ?? "No update"}</div>
+          </div>
+        </div>
+        <div className="form-grid two-columns">
+          <div className="form-row">
             <span>Status</span>
             <div className="readonly-field">
               <StatusPill status={getProjectDisplayStatus(project)}>
@@ -1026,6 +1034,9 @@ export function EditTaskModal({
     <Modal title="Edit Task" trigger="Edit" triggerKind={triggerKind}>
       <WorkItemActionMenu item={task} projectId={projectId} type="task" />
       <TaskForm projectId={projectId} users={users} task={task} />
+      <div className="task-detail-actions">
+        <CreateSubtaskModal projectId={projectId} taskId={task.id} users={users} />
+      </div>
     </Modal>
   );
 }
@@ -1044,6 +1055,9 @@ export function ViewTaskModal({
   return (
     <Modal title="View Task" trigger="View" triggerKind={triggerKind}>
       <TaskForm projectId={projectId} users={users} task={task} readOnly />
+      <div className="task-detail-actions">
+        <CreateSubtaskModal projectId={projectId} taskId={task.id} users={users} />
+      </div>
     </Modal>
   );
 }
@@ -1181,6 +1195,12 @@ function SubtaskForm({
           <div className="readonly-field">{subtask.title}</div>
         </div>
         <div className="form-row">
+          <span>Description</span>
+          <div className="readonly-field readonly-description">
+            {subtask.description ? truncateText(subtask.description, 250) : "No description"}
+          </div>
+        </div>
+        <div className="form-row">
           <span>Assigned To</span>
           <div className="readonly-field">{assignee}</div>
         </div>
@@ -1227,6 +1247,16 @@ function SubtaskForm({
           defaultValue={subtask?.title}
           disabled={readOnly}
           required
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor={`${subtask?.id ?? taskId}-subtask-description`}>Description</label>
+        <textarea
+          id={`${subtask?.id ?? taskId}-subtask-description`}
+          name="description"
+          defaultValue={subtask?.description}
+          disabled={readOnly}
+          placeholder="Describe the expected outcome, important context, and next action for this sub-task."
         />
       </div>
       <div className="form-row">
@@ -1488,14 +1518,8 @@ export function ProjectTasksAntTable({
   );
   const [sortedInfo, setSortedInfo] = useState<SorterResult<ProjectTaskTableRow>>({});
   const showActions = canManageTask || canUpdateStatus;
-  const canUpdateRowStatus = (row: ProjectTaskTableRow) =>
-    canManageTask ||
-    (canUpdateStatus &&
-      (row.kind === "task" ? row.task.assignedToId === currentUserId : row.subtask.assignedToId === currentUserId));
-  const isStaffEditableRow = (row: ProjectTaskTableRow) =>
-    !canManageTask &&
-    canUpdateStatus &&
-    (row.kind === "task" ? row.task.assignedToId === currentUserId : row.subtask.assignedToId === currentUserId);
+  const canUpdateRowStatus = (_row?: ProjectTaskTableRow) => canUpdateStatus;
+  const isStaffEditableRow = (_row?: ProjectTaskTableRow) => !canManageTask && canUpdateStatus;
 
   const clearAll = () => {
     setSortedInfo({});
@@ -1548,6 +1572,7 @@ export function ProjectTasksAntTable({
       taskId: subtask.taskId,
       type: "subtask" as const,
       title: subtask.title,
+      description: subtask.description,
       projectName,
       assignedTo: subtask.assignedTo,
       startDate: subtask.startLabel,
@@ -1684,6 +1709,7 @@ export function ProjectTasksAntTable({
             projectId={row.task.projectId}
             taskId={row.task.id}
             title={row.task.title}
+            description={row.task.description}
             assignedToId={row.task.assignedToId}
             startDate={row.task.startDate}
             dueDate={row.task.dueDate}
@@ -1698,6 +1724,7 @@ export function ProjectTasksAntTable({
             taskId={row.subtask.taskId}
             subtaskId={row.subtask.id}
             title={row.subtask.title}
+            description={row.subtask.description}
             assignedToId={row.subtask.assignedToId}
             startDate={row.subtask.startDate}
             dueDate={row.subtask.dueDate}
@@ -1856,6 +1883,7 @@ export function ProjectTasksAntTable({
                           projectId={row.task.projectId}
                           taskId={row.task.id}
                           title={row.task.title}
+                          description={row.task.description}
                           assignedToId={row.task.assignedToId}
                           startDate={row.task.startDate}
                           dueDate={row.task.dueDate}
@@ -1870,6 +1898,7 @@ export function ProjectTasksAntTable({
                           taskId={row.subtask.taskId}
                           subtaskId={row.subtask.id}
                           title={row.subtask.title}
+                          description={row.subtask.description}
                           assignedToId={row.subtask.assignedToId}
                           startDate={row.subtask.startDate}
                           dueDate={row.subtask.dueDate}

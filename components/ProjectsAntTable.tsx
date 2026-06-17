@@ -58,6 +58,7 @@ export function ProjectsAntTable({ canEdit, canManage, currentUserId, projects, 
     ownerId: project.ownerId,
     status: project.rawStatus,
     completedTaskCount: project.completedTaskCount,
+    lastUpdate: project.lastUpdate,
     remainingTaskCount: project.remainingTaskCount,
     totalTaskCount: project.taskCount
   });
