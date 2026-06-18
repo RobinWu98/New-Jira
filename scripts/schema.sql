@@ -311,6 +311,18 @@ CREATE TABLE IF NOT EXISTS two_factor_trusted_sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS pin_login_devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_token_hash TEXT UNIQUE NOT NULL,
+  pin_hash TEXT NOT NULL,
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS password_reset_tokens_user_id_idx ON password_reset_tokens(user_id);
 CREATE INDEX IF NOT EXISTS user_registration_invites_user_id_idx ON user_registration_invites(user_id);
@@ -330,6 +342,7 @@ CREATE INDEX IF NOT EXISTS notifications_user_id_read_at_idx ON notifications(us
 CREATE INDEX IF NOT EXISTS two_factor_challenges_user_id_idx ON two_factor_challenges(user_id);
 CREATE INDEX IF NOT EXISTS two_factor_backup_codes_user_id_idx ON two_factor_backup_codes(user_id);
 CREATE INDEX IF NOT EXISTS two_factor_trusted_sessions_user_id_idx ON two_factor_trusted_sessions(user_id);
+CREATE INDEX IF NOT EXISTS pin_login_devices_user_id_idx ON pin_login_devices(user_id);
 
 INSERT INTO users (name, email, password_hash, role, category)
 VALUES

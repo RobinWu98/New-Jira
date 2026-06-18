@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 
-const DEFAULT_PERSONAL_EMAIL = "shangweiwu1013@gmail.com";
+const DEFAULT_PERSONAL_EMAIL = "securemed@healthangel.com.au";
 const PASSWORD_RESET_REPLY_TO = process.env.EMAIL_REPLY_TO ?? DEFAULT_PERSONAL_EMAIL;
 const DEFAULT_EMAIL_FROM = `Svida Job Tracker <${DEFAULT_PERSONAL_EMAIL}>`;
 const EMAIL_INK = "#3d332a";
@@ -29,7 +29,7 @@ function getSmtpTransport() {
   }
 
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST ?? "smtp.gmail.com",
+    host: process.env.SMTP_HOST ?? "smtp.office365.com",
     port: Number(process.env.SMTP_PORT ?? 587),
     secure: process.env.SMTP_SECURE === "true",
     auth: {

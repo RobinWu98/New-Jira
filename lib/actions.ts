@@ -5,10 +5,16 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   clearTwoFactorChallenge,
+  clearPinDevice,
+  clearPinDeviceCookie,
   clearTwoFactorTrust,
+  createPinDeviceCookie,
   createSession,
   createTwoFactorTrust,
   destroySession,
+  hasValidPinDeviceForUser,
+  getPinDeviceTokenHash,
+  getRememberedPinUser,
   getTwoFactorChallengeUser,
   requireAdmin,
   requireCreateProject,
@@ -55,6 +61,14 @@ function validateEmail(email: string) {
 
 function validatePassword(password: string) {
   return password.length >= 8;
+}
+
+function validatePin(pin: string) {
+  return /^\d{4}$/.test(pin);
+}
+
+async function redirectAfterPasswordLogin(userId: string): Promise<never> {
+  redirect((await hasValidPinDeviceForUser(userId)) ? "/main-page" : "/settings/pin?setup=required");
 }
 
 function normalizeProjectStatus(status: string) {
@@ -296,7 +310,7 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
     return { error: "This email is already registered." };
   }
 
-  redirect("/main-page");
+  redirect("/settings/pin?setup=required");
 }
 
 export async function loginAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -314,7 +328,7 @@ export async function loginAction(_: AuthActionState, formData: FormData): Promi
   }
 
   await createSession(user.id);
-  redirect("/main-page");
+  return await redirectAfterPasswordLogin(user.id);
 }
 
 export async function verifyLoginTwoFactorAction(
@@ -351,7 +365,143 @@ export async function verifyLoginTwoFactorAction(
   await clearTwoFactorChallenge();
   await createTwoFactorTrust(challengeUser.id);
   await createSession(challengeUser.id);
+  return await redirectAfterPasswordLogin(challengeUser.id);
+}
+
+export async function setupPinAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const user = await requireUser();
+  const currentPin = asString(formData, "currentPin");
+  const pin = asString(formData, "newPin");
+  const confirmPin = asString(formData, "confirmNewPin");
+  const redirectTo = asString(formData, "redirectTo");
+  const hasCurrentPin = asString(formData, "hasCurrentPin") === "true";
+
+  if (!validatePin(pin)) {
+    return { error: "New PIN must be exactly 4 numbers." };
+  }
+
+  if (pin !== confirmPin) {
+    return { error: "New PIN confirmation does not match." };
+  }
+
+  const currentDeviceTokenHash = await getPinDeviceTokenHash();
+  const existingDevice = currentDeviceTokenHash
+    ? await query<{ id: string; pin_hash: string }>(
+        `SELECT id, pin_hash
+         FROM pin_login_devices
+         WHERE user_id = $1
+           AND device_token_hash = $2
+           AND expires_at > now()
+         LIMIT 1`,
+        [user.id, currentDeviceTokenHash]
+      )
+    : { rows: [] };
+  const existingPin = existingDevice.rows[0];
+
+  if (hasCurrentPin) {
+    if (!existingPin) {
+      return { error: "Current PIN is not available for this browser. Log in with your password again." };
+    }
+
+    if (!validatePin(currentPin)) {
+      return { error: "Current PIN must be exactly 4 numbers." };
+    }
+
+    if (!(await bcrypt.compare(currentPin, existingPin.pin_hash))) {
+      return { error: "Current PIN is incorrect." };
+    }
+  }
+
+  const deviceToken = randomToken();
+  const deviceTokenHash = hashToken(deviceToken);
+  const pinHash = await bcrypt.hash(pin, 12);
+
+  if (existingPin) {
+    await query("DELETE FROM pin_login_devices WHERE id = $1", [existingPin.id]);
+  }
+
+  await query(
+    `INSERT INTO pin_login_devices (user_id, device_token_hash, pin_hash, expires_at)
+     VALUES ($1, $2, $3, now() + interval '30 days')`,
+    [user.id, deviceTokenHash, pinHash]
+  );
+  await createPinDeviceCookie(deviceToken);
+  revalidatePath("/settings/pin");
+
+  if (redirectTo === "/main-page") {
+    redirect("/main-page");
+  }
+
+  return { message: "PIN has been updated for this browser." };
+}
+
+export async function verifyPinLoginAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const pin = asString(formData, "pin");
+  const rememberedUser = await getRememberedPinUser();
+  const tokenHash = await getPinDeviceTokenHash();
+
+  if (!rememberedUser || !tokenHash) {
+    return { error: "This browser is not set up for PIN access." };
+  }
+
+  if (!validatePin(pin)) {
+    return { error: "Enter your 4-digit PIN." };
+  }
+
+  const result = await query<{
+    failed_attempts: number;
+    id: string;
+    locked_until: Date | string | null;
+    pin_hash: string;
+    user_id: string;
+  }>(
+    `SELECT id, user_id, pin_hash, failed_attempts, locked_until
+     FROM pin_login_devices
+     WHERE device_token_hash = $1
+       AND expires_at > now()
+     LIMIT 1`,
+    [tokenHash]
+  );
+  const device = result.rows[0];
+
+  if (!device) {
+    await clearPinDevice();
+    return { error: "PIN access has expired. Please log in with your password." };
+  }
+
+  if (device.locked_until && new Date(device.locked_until) > new Date()) {
+    return { error: "Too many incorrect attempts. Use password login, or try again later." };
+  }
+
+  if (!(await bcrypt.compare(pin, device.pin_hash))) {
+    const nextAttempts = device.failed_attempts + 1;
+    await query(
+      `UPDATE pin_login_devices
+       SET failed_attempts = $1,
+           locked_until = CASE WHEN $1 >= 5 THEN now() + interval '10 minutes' ELSE locked_until END
+       WHERE id = $2`,
+      [nextAttempts, device.id]
+    );
+
+    return { error: nextAttempts >= 5 ? "Too many incorrect attempts. Try again in 10 minutes." : "PIN is incorrect." };
+  }
+
+  await query(
+    `UPDATE pin_login_devices
+     SET failed_attempts = 0,
+         locked_until = NULL,
+         last_used_at = now(),
+         expires_at = now() + interval '30 days'
+     WHERE id = $1`,
+    [device.id]
+  );
+  await createSession(device.user_id);
   redirect("/main-page");
+}
+
+export async function clearPinDeviceAction() {
+  await clearPinDeviceCookie();
+  redirect("/login");
 }
 
 export async function logoutAction() {
@@ -1513,7 +1663,7 @@ export async function completeInvitedRegistrationAction(
   await query("UPDATE user_registration_invites SET completed_at = now() WHERE id = $1", [invite.id]);
 
   await createSession(invite.user_id);
-  redirect("/main-page");
+  redirect("/settings/pin?setup=required");
 }
 
 export async function forgotPasswordAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -1588,9 +1738,14 @@ export async function changePasswordAction(_: AuthActionState, formData: FormDat
   const user = await requireUser();
   const currentPassword = asString(formData, "currentPassword");
   const newPassword = asString(formData, "newPassword");
+  const confirmNewPassword = asString(formData, "confirmNewPassword");
 
   if (!validatePassword(newPassword)) {
     return { error: "New password must be at least 8 characters." };
+  }
+
+  if (newPassword !== confirmNewPassword) {
+    return { error: "New password confirmation does not match." };
   }
 
   const result = await query<{ password_hash: string }>("SELECT password_hash FROM users WHERE id = $1", [user.id]);

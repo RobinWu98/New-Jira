@@ -31,13 +31,13 @@ services:
       SESSION_SECRET: docker-demo-session-secret-change-me
       APP_URL: http://localhost:3000
       APP_NAME: Svida Job Tracker
-      SMTP_HOST: smtp.gmail.com
+      SMTP_HOST: smtp.office365.com
       SMTP_PORT: "587"
       SMTP_SECURE: "false"
       SMTP_USER: ""
       SMTP_PASS: ""
-      EMAIL_FROM: Svida Job Tracker <noreply@example.com>
-      EMAIL_REPLY_TO: shangweiwu1013@gmail.com
+      EMAIL_FROM: Health Angel <securemed@healthangel.com.au>
+      EMAIL_REPLY_TO: securemed@healthangel.com.au
     ports:
       - "3000:3000"
     command: sh -c "npm run db:init && npm run start -- -H 0.0.0.0"

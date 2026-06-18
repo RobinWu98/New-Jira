@@ -6,9 +6,11 @@ import { query } from "./db";
 const SESSION_COOKIE = "jobtracker_session";
 const TWO_FACTOR_CHALLENGE_COOKIE = "jobtracker_2fa_challenge";
 const TWO_FACTOR_TRUST_COOKIE = "jobtracker_2fa_trust";
+const PIN_DEVICE_COOKIE = "jobtracker_pin_device";
 const SESSION_DAYS = 14;
 const TWO_FACTOR_CHALLENGE_MINUTES = 10;
 const TWO_FACTOR_TRUST_DAYS = 30;
+const PIN_DEVICE_DAYS = 30;
 
 export type UserRole = "admin" | "manager" | "staff";
 
@@ -199,6 +201,83 @@ export async function requireAdmin() {
   }
 
   return user;
+}
+
+export async function createPinDeviceCookie(token: string) {
+  const cookieStore = await cookies();
+
+  cookieStore.set(PIN_DEVICE_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: PIN_DEVICE_DAYS * 24 * 60 * 60
+  });
+}
+
+export async function getPinDeviceTokenHash() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(PIN_DEVICE_COOKIE)?.value;
+
+  return token ? hashToken(token) : null;
+}
+
+export async function hasValidPinDeviceForUser(userId: string) {
+  const tokenHash = await getPinDeviceTokenHash();
+
+  if (!tokenHash) {
+    return false;
+  }
+
+  const result = await query<{ id: string }>(
+    `SELECT id
+     FROM pin_login_devices
+     WHERE user_id = $1
+       AND device_token_hash = $2
+       AND expires_at > now()
+     LIMIT 1`,
+    [userId, tokenHash]
+  );
+
+  return Boolean(result.rows[0]);
+}
+
+export async function clearPinDevice() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(PIN_DEVICE_COOKIE)?.value;
+
+  if (token) {
+    await query("DELETE FROM pin_login_devices WHERE device_token_hash = $1", [hashToken(token)]);
+  }
+
+  cookieStore.delete(PIN_DEVICE_COOKIE);
+}
+
+export async function clearPinDeviceCookie() {
+  const cookieStore = await cookies();
+
+  cookieStore.delete(PIN_DEVICE_COOKIE);
+}
+
+export async function getRememberedPinUser(): Promise<User | null> {
+  const tokenHash = await getPinDeviceTokenHash();
+
+  if (!tokenHash) {
+    return null;
+  }
+
+  const result = await query<User>(
+    `SELECT users.id, users.name, users.email, users.role, users.category, users.archived_at
+     FROM pin_login_devices
+     JOIN users ON users.id = pin_login_devices.user_id
+     WHERE pin_login_devices.device_token_hash = $1
+       AND pin_login_devices.expires_at > now()
+       AND users.archived_at IS NULL
+     LIMIT 1`,
+    [tokenHash]
+  );
+
+  return result.rows[0] ?? null;
 }
 
 export function canManageUsers(user: User) {

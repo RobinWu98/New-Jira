@@ -18,17 +18,17 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/jobTracker
 ```
 
    The `db:init` script creates the `jobTracker` database if it does not exist.
-   To send password reset and invite emails through Gmail during development, enable 2-Step Verification for the Gmail account, create a Google App Password, then set:
+   To send password reset and invite emails through Office 365 during development, set:
 
 ```bash
-SMTP_HOST=smtp.gmail.com
+SMTP_HOST=smtp.office365.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=shangweiwu1013@gmail.com
-SMTP_PASS=your-google-app-password
-EMAIL_FROM="Svida Job Tracker <shangweiwu1013@gmail.com>"
-EMAIL_REPLY_TO=shangweiwu1013@gmail.com
-ADMIN_INVITE_VERIFICATION_EMAIL=shangweiwu1013@gmail.com
+SMTP_USER=securemed@healthangel.com.au
+SMTP_PASS=your-office365-password
+EMAIL_FROM="Health Angel <securemed@healthangel.com.au>"
+EMAIL_REPLY_TO=securemed@healthangel.com.au
+ADMIN_INVITE_VERIFICATION_EMAIL=securemed@healthangel.com.au
 ```
 
    If `SMTP_PASS` is empty, the app stays in development fallback mode and shows reset/invite links in the UI instead of sending real email.
@@ -91,7 +91,7 @@ docker compose down -v
 docker compose up --build
 ```
 
-For real Gmail SMTP in Docker, set `SMTP_USER` and `SMTP_PASS` in `docker-compose.yml` before starting the app.
+For real Office 365 SMTP in Docker, set `SMTP_USER` and `SMTP_PASS` in `docker-compose.yml` before starting the app.
 
 ## Current scope
 

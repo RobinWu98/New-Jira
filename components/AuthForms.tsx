@@ -7,6 +7,7 @@ import {
   adminUpdateUserAction,
   beginTwoFactorSetupAction,
   changePasswordAction,
+  clearPinDeviceAction,
   completeInvitedRegistrationAction,
   confirmTwoFactorSetupAction,
   createUserAction,
@@ -15,7 +16,9 @@ import {
   loginAction,
   registerAction,
   resetPasswordAction,
+  setupPinAction,
   updateUserProfileAction,
+  verifyPinLoginAction,
   verifyLoginTwoFactorAction
 } from "@/lib/actions";
 import { SubmitButton } from "./FormStatus";
@@ -393,6 +396,116 @@ export function ResetPasswordForm({ token }: { token: string }) {
   );
 }
 
+export function PinSetupForm({ enabled, redirectTo }: { enabled: boolean; redirectTo?: string }) {
+  const [state, action] = useActionState(setupPinAction, initialState);
+
+  return (
+    <form action={action}>
+      <Feedback state={state} />
+      {redirectTo ? <input name="redirectTo" type="hidden" value={redirectTo} /> : null}
+      <input name="hasCurrentPin" type="hidden" value={enabled ? "true" : "false"} />
+      {enabled ? (
+        <div className="form-row">
+          <label htmlFor="currentPin">Current PIN</label>
+          <input
+            autoComplete="off"
+            id="currentPin"
+            inputMode="numeric"
+            maxLength={4}
+            minLength={4}
+            name="currentPin"
+            pattern="[0-9]{4}"
+            required
+            type="password"
+          />
+        </div>
+      ) : null}
+      <div className="form-row">
+        <label htmlFor="newPin">New PIN</label>
+        <input
+          autoComplete="off"
+          id="newPin"
+          inputMode="numeric"
+          maxLength={4}
+          minLength={4}
+          name="newPin"
+          pattern="[0-9]{4}"
+          required
+          type="password"
+        />
+        <p className="small">4 digits required.</p>
+      </div>
+      <div className="form-row">
+        <label htmlFor="confirmNewPin">Confirm New PIN</label>
+        <input
+          autoComplete="off"
+          id="confirmNewPin"
+          inputMode="numeric"
+          maxLength={4}
+          minLength={4}
+          name="confirmNewPin"
+          pattern="[0-9]{4}"
+          required
+          type="password"
+        />
+      </div>
+      <div className="button-row">
+        <SubmitButton>{enabled ? "Reset PIN" : "Confirm PIN"}</SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+export function PinLoginForm({ user }: { user: { email: string; name: string | null } }) {
+  const [pin, setPin] = useState("");
+  const [state, action] = useActionState(verifyPinLoginAction, initialState);
+  const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+  function addDigit(value: string) {
+    setPin((current) => (current.length < 4 ? `${current}${value}` : current));
+  }
+
+  return (
+    <div className="pin-console" aria-label="PIN unlock">
+      <div className="pin-account">
+        <span>Quick unlock</span>
+        <strong>{user.name || user.email}</strong>
+      </div>
+      <form action={action}>
+        <Feedback state={state} />
+        <input name="pin" type="hidden" value={pin} />
+        <div className="pin-display" aria-label={`${pin.length} of 4 PIN digits entered`}>
+          {[0, 1, 2, 3].map((slot) => (
+            <span className={slot < pin.length ? "is-filled" : ""} key={slot} />
+          ))}
+        </div>
+        <div className="pin-keypad" aria-label="PIN keypad">
+          {numbers.map((number) => (
+            <button key={number} onClick={() => addDigit(number)} type="button">
+              {number}
+            </button>
+          ))}
+          <button onClick={() => setPin("")} type="button">
+            C
+          </button>
+          <button onClick={() => addDigit("0")} type="button">
+            0
+          </button>
+          <button onClick={() => setPin((current) => current.slice(0, -1))} type="button">
+            Del
+          </button>
+        </div>
+        <div className="button-row pin-actions">
+          <SubmitButton disabled={pin.length !== 4}>Unlock</SubmitButton>
+          <button className="button secondary" formAction={clearPinDeviceAction} type="submit">
+            Use Password Login
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function ChangePasswordForm() {
   const [state, action] = useActionState(changePasswordAction, initialState);
 
@@ -408,9 +521,12 @@ export function ChangePasswordForm() {
         <input id="newPassword" name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
         <p className="small">Minimum 8 characters.</p>
       </div>
+      <div className="form-row">
+        <label htmlFor="confirmNewPassword">Confirm New Password</label>
+        <input id="confirmNewPassword" name="confirmNewPassword" type="password" autoComplete="new-password" minLength={8} required />
+      </div>
       <div className="button-row">
-        <SubmitButton>Change Password</SubmitButton>
-        <a href="/dashboard">Back to Home</a>
+        <SubmitButton>Password Reset</SubmitButton>
       </div>
     </form>
   );

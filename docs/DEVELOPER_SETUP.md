@@ -19,16 +19,16 @@ TWO_FACTOR_ENCRYPTION_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 SESSION_SECRET=local-development-session-secret-change-me
 APP_URL=http://localhost:3000
 APP_NAME=Svida Job Tracker
-SMTP_HOST=smtp.gmail.com
+SMTP_HOST=smtp.office365.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=shangweiwu1013@gmail.com
+SMTP_USER=securemed@healthangel.com.au
 SMTP_PASS=
-EMAIL_FROM=Svida Job Tracker <shangweiwu1013@gmail.com>
-EMAIL_REPLY_TO=shangweiwu1013@gmail.com
+EMAIL_FROM=Health Angel <securemed@healthangel.com.au>
+EMAIL_REPLY_TO=securemed@healthangel.com.au
 ```
 
-`SMTP_PASS` must be a Google App Password if real email sending is needed. Leave it blank to avoid sending real emails.
+`SMTP_PASS` must be a valid Office 365 SMTP password if real email sending is needed. Leave it blank to avoid sending real emails.
 
 ## Run Locally
 
@@ -209,4 +209,3 @@ git add .
 git commit -m "Update developer setup and demo workflow"
 git push origin main
 ```
-

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/AuthForms";
 import { PageHeader } from "@/components/PageHeader";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getRememberedPinUser } from "@/lib/auth";
 
 export default async function LoginPage({
   searchParams
@@ -13,6 +13,12 @@ export default async function LoginPage({
 
   if (user) {
     redirect("/main-page");
+  }
+
+  const rememberedUser = await getRememberedPinUser();
+
+  if (rememberedUser) {
+    redirect("/pin");
   }
 
   return (

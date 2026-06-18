@@ -18,6 +18,7 @@ export default async function TwoFactorSettingsPage() {
       <PageHeader title="Svida Job Tracker" subtitle="Protect sign-in with an authenticator app.">
         <nav className="nav">
           <a href="/dashboard">Account Home</a>
+          <a href="/settings/pin">PIN Reset</a>
           <a href="/settings/password">Change Password</a>
         </nav>
       </PageHeader>

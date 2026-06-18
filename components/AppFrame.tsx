@@ -89,6 +89,7 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
   const doneProjects = result.rows.filter((project) => project.status === "done");
   const shellClass = ["shell", shellClassName].filter(Boolean).join(" ");
   const unreadCount = Number(unreadResult.rows[0]?.count ?? 0);
+  const displayName = user ? user.name || user.email : null;
 
   return (
     <main className="page app-frame">
@@ -106,6 +107,11 @@ export async function AppFrame({ children, shellClassName = "", currentProjectId
           </a>
         </div>
         <div className="topbar-right">
+          {displayName ? (
+            <span className="topbar-user-name" title={displayName}>
+              {displayName}
+            </span>
+          ) : null}
           <a className="topbar-icon-link" href="/notifications" aria-label="Notifications" title="Notifications">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />

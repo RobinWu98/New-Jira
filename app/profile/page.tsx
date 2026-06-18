@@ -32,6 +32,12 @@ export default async function ProfilePage() {
         </div>
         <div className="button-row">
           <ProfileEditModal user={user} />
+          <UiButtonLink href="/settings/pin">
+            PIN Reset
+          </UiButtonLink>
+          <UiButtonLink href="/settings/password">
+            Password Reset
+          </UiButtonLink>
           {canManageUsers(user) ? (
             <UiButtonLink href="/admin/users">
               Manage Users
