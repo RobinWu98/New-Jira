@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 import {
   clearTwoFactorChallenge,
   clearPinDevice,
-  clearPinDeviceCookie,
   clearTwoFactorTrust,
   createPinDeviceCookie,
   createSession,
@@ -500,8 +499,7 @@ export async function verifyPinLoginAction(_: AuthActionState, formData: FormDat
 }
 
 export async function clearPinDeviceAction() {
-  await clearPinDeviceCookie();
-  redirect("/login");
+  redirect("/login?password=1");
 }
 
 export async function logoutAction() {

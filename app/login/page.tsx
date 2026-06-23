@@ -6,16 +6,16 @@ import { getCurrentUser, getRememberedPinUser } from "@/lib/auth";
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ reset?: string }>;
+  searchParams: Promise<{ password?: string; reset?: string }>;
 }) {
-  const { reset } = await searchParams;
+  const { password, reset } = await searchParams;
   const user = await getCurrentUser();
 
   if (user) {
     redirect("/main-page");
   }
 
-  const rememberedUser = await getRememberedPinUser();
+  const rememberedUser = password === "1" ? null : await getRememberedPinUser();
 
   if (rememberedUser) {
     redirect("/pin");
