@@ -25,12 +25,17 @@ export type WorkItemAntTableRow = {
 type WorkItemsAntTableProps = {
   enableProjectSort?: boolean;
   groupByProject?: boolean;
+  openDaysTitle?: string;
   rows: WorkItemAntTableRow[];
   showResetFilters?: boolean;
+  showResetSorters?: boolean;
   showAssignedTo?: boolean;
+  showDue?: boolean;
   showOpenDays?: boolean;
   showProject?: boolean;
+  showPriority?: boolean;
   showStart?: boolean;
+  showStatus?: boolean;
   showToolbarTitle?: boolean;
   title: string;
 };
@@ -78,12 +83,17 @@ function compareRows(left: WorkItemAntTableRow, right: WorkItemAntTableRow, colu
 export function WorkItemsAntTable({
   enableProjectSort = true,
   groupByProject = false,
+  openDaysTitle = "Open Days",
   rows,
   showResetFilters = true,
+  showResetSorters = true,
   showAssignedTo = false,
+  showDue = true,
   showOpenDays = false,
   showProject = false,
+  showPriority = true,
   showStart = true,
+  showStatus = true,
   showToolbarTitle = true,
   title
 }: WorkItemsAntTableProps) {
@@ -173,14 +183,14 @@ export function WorkItemsAntTable({
     title: "Task",
     dataIndex: "title",
     key: "title",
-    width: 260,
+    width: 360,
     render: (_title: string, row: WorkItemAntTableRow) => <TaskDetailModal task={row.detail} />
   };
   const projectColumn = {
     title: "Project",
     dataIndex: "projectName",
     key: "projectName",
-    width: 220,
+    width: 300,
     render: (projectName: string | undefined, row: WorkItemAntTableRow) => {
       const projectLink = row.detail.projectId ? (
         <a href={`/projects/${row.detail.projectId}`}>{projectName || "No project"}</a>
@@ -215,7 +225,7 @@ export function WorkItemsAntTable({
             title: "Assigned To",
             dataIndex: "assignedTo",
             key: "assignedTo",
-            width: 180,
+            width: 220,
             sorter: groupByProject
               ? true
               : (left: WorkItemAntTableRow, right: WorkItemAntTableRow) =>
@@ -230,14 +240,14 @@ export function WorkItemsAntTable({
             title: "Start",
             dataIndex: "startLabel",
             key: "startLabel",
-            width: 120
+            width: 136
           }
         ]
       : []),
     ...(showOpenDays
       ? [
           {
-            title: "Open Days",
+            title: openDaysTitle,
             dataIndex: "openDays",
             key: "openDays",
             render: (openDays: number | null | undefined) => (typeof openDays === "number" ? openDays : "-"),
@@ -246,78 +256,185 @@ export function WorkItemsAntTable({
               : (left: WorkItemAntTableRow, right: WorkItemAntTableRow) =>
                   openDaysRank(left.openDays) - openDaysRank(right.openDays),
             sortOrder: sortedInfo.columnKey === "openDays" ? sortedInfo.order : null,
-            width: 120
+            width: 144
           }
         ]
       : []),
-    {
-      title: "Due Date",
-      dataIndex: "dueLabel",
-      key: "dueSort",
-      sorter: groupByProject ? true : (left, right) => dateRank(left.dueSort) - dateRank(right.dueSort),
-      sortOrder: sortedInfo.columnKey === "dueSort" ? sortedInfo.order : null,
-      width: 130
-    },
-    {
-      title: "Priority",
-      dataIndex: "priority",
-      key: "priority",
-      filters: [
-        { text: "High", value: "high" },
-        { text: "Medium", value: "medium" },
-        { text: "Low", value: "low" }
-      ],
-      filteredValue: filteredInfo.priority ?? null,
-      onFilter: groupByProject ? undefined : (value, row) => row.priority === value,
-      sorter: groupByProject ? true : (left, right) => priorityRank(left.priority) - priorityRank(right.priority),
-      sortOrder: sortedInfo.columnKey === "priority" ? sortedInfo.order : null,
-      render: (priority: string) => <PriorityPill priority={priority} />,
-      width: 130
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      filters: [
-        { text: "Overdue", value: "overdue" },
-        { text: "In Progress", value: "in_progress" },
-        { text: "Todo", value: "todo" },
-        { text: "Done", value: "done" }
-      ],
-      filteredValue: filteredInfo.status ?? null,
-      onFilter: groupByProject ? undefined : (value, row) => row.status === value,
-      sorter: groupByProject ? true : (left, right) => statusRank(left.status) - statusRank(right.status),
-      sortOrder: sortedInfo.columnKey === "status" ? sortedInfo.order : null,
-      render: (status: string) => <TaskStatusPill status={status} />,
-      width: 150
-    }
+    ...(showDue
+      ? [
+          {
+            title: "Due Date",
+            dataIndex: "dueLabel",
+            key: "dueSort",
+            sorter: groupByProject ? true : (left: WorkItemAntTableRow, right: WorkItemAntTableRow) => dateRank(left.dueSort) - dateRank(right.dueSort),
+            sortOrder: sortedInfo.columnKey === "dueSort" ? sortedInfo.order : null,
+            width: 144
+          }
+        ]
+      : []),
+    ...(showPriority
+      ? [
+          {
+            title: "Priority",
+            dataIndex: "priority",
+            key: "priority",
+            filters: [
+              { text: "High", value: "high" },
+              { text: "Medium", value: "medium" },
+              { text: "Low", value: "low" }
+            ],
+            filteredValue: filteredInfo.priority ?? null,
+            onFilter: groupByProject ? undefined : (value: boolean | React.Key, row: WorkItemAntTableRow) => row.priority === value,
+            sorter: groupByProject ? true : (left: WorkItemAntTableRow, right: WorkItemAntTableRow) => priorityRank(left.priority) - priorityRank(right.priority),
+            sortOrder: sortedInfo.columnKey === "priority" ? sortedInfo.order : null,
+            render: (priority: string) => <PriorityPill priority={priority} />,
+            width: 148
+          }
+        ]
+      : []),
+    ...(showStatus
+      ? [
+          {
+            title: "Status",
+            dataIndex: "status",
+            key: "status",
+            filters: [
+              { text: "Overdue", value: "overdue" },
+              { text: "In Progress", value: "in_progress" },
+              { text: "Todo", value: "todo" },
+              { text: "Done", value: "done" }
+            ],
+            filteredValue: filteredInfo.status ?? null,
+            onFilter: groupByProject ? undefined : (value: boolean | React.Key, row: WorkItemAntTableRow) => row.status === value,
+            sorter: groupByProject ? true : (left: WorkItemAntTableRow, right: WorkItemAntTableRow) => statusRank(left.status) - statusRank(right.status),
+            sortOrder: sortedInfo.columnKey === "status" ? sortedInfo.order : null,
+            render: (status: string) => <TaskStatusPill status={status} />,
+            width: 172
+          }
+        ]
+      : [])
   ];
-  const { columns, scrollX } = useResizableAntColumns(baseColumns, `work-items-ant-table-widths-${title}`, 92);
+  const { columns, scrollX } = useResizableAntColumns(baseColumns, `work-items-ant-table-widths-wide-v2-${title}`, 92);
 
   return (
-    <div className="ant-data-table-shell">
-      <div className={`ant-data-table-toolbar${showToolbarTitle ? "" : " align-end"}`}>
-        {showToolbarTitle ? (
-          <strong>
-            {title} ({rows.length})
-          </strong>
-        ) : null}
-        <Space wrap>
-          {showResetFilters ? <Button onClick={clearFilters}>Reset filters</Button> : null}
-          <Button onClick={clearAll}>Reset filters and sorters</Button>
-        </Space>
+    <>
+      <div className="ant-data-table-shell responsive-desktop-table">
+        <div className={`ant-data-table-toolbar${showToolbarTitle ? "" : " align-end"}`}>
+          {showToolbarTitle ? (
+            <strong>
+              {title} ({rows.length})
+            </strong>
+          ) : null}
+          <Space wrap>
+            {showResetFilters ? <Button onClick={clearFilters}>Reset filters</Button> : null}
+            {showResetSorters ? <Button onClick={clearAll}>Reset filters and sorters</Button> : null}
+          </Space>
+        </div>
+        <Table<WorkItemAntTableRow>
+          bordered
+          columns={columns}
+          dataSource={groupedRows}
+          onChange={handleChange}
+          pagination={false}
+          rowKey="id"
+          scroll={{ x: scrollX }}
+          size="middle"
+          tableLayout="fixed"
+        />
       </div>
-      <Table<WorkItemAntTableRow>
-        bordered
-        columns={columns}
-        dataSource={groupedRows}
-        onChange={handleChange}
-        pagination={false}
-        rowKey="id"
-        scroll={{ x: scrollX }}
-        size="middle"
-        tableLayout="fixed"
-      />
-    </div>
+      <div className="mobile-card-list work-items-mobile-list" aria-label={title}>
+        {showPriority || showStatus ? (
+          <div className="mobile-filter-bar" aria-label="Task filters">
+            {showPriority ? (
+              <label>
+                <span>Priority</span>
+                <select
+                  onChange={(event) =>
+                    setFilteredInfo((current) => ({
+                      ...current,
+                      priority: event.target.value ? [event.target.value] : null
+                    }))
+                  }
+                  value={String(filteredInfo.priority?.[0] ?? "")}
+                >
+                  <option value="">All</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </label>
+            ) : null}
+            {showStatus ? (
+              <label>
+                <span>Status</span>
+                <select
+                  onChange={(event) =>
+                    setFilteredInfo((current) => ({
+                      ...current,
+                      status: event.target.value ? [event.target.value] : null
+                    }))
+                  }
+                  value={String(filteredInfo.status?.[0] ?? "")}
+                >
+                  <option value="">All</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="todo">Todo</option>
+                  <option value="done">Done</option>
+                </select>
+              </label>
+            ) : null}
+            <Button onClick={clearFilters}>Clear</Button>
+          </div>
+        ) : null}
+        {groupedRows.map((row) => (
+          <article className="mobile-data-card" key={row.id}>
+            <div className="mobile-card-main">
+              <TaskDetailModal task={row.detail} />
+              {showStatus ? <TaskStatusPill status={row.status} /> : null}
+            </div>
+            {showProject && row.projectName ? (
+              <a className="mobile-card-subtitle" href={`/projects/${row.detail.projectId}`}>
+                {row.projectName}
+              </a>
+            ) : null}
+            <dl className="mobile-card-meta">
+              {showAssignedTo && row.assignedTo ? (
+                <div>
+                  <dt>Assigned</dt>
+                  <dd>{row.assignedTo}</dd>
+                </div>
+              ) : null}
+              {showStart ? (
+                <div>
+                  <dt>Start</dt>
+                  <dd>{row.startLabel}</dd>
+                </div>
+              ) : null}
+              {showOpenDays ? (
+                <div>
+                  <dt>{openDaysTitle}</dt>
+                  <dd>{typeof row.openDays === "number" ? row.openDays : "-"}</dd>
+                </div>
+              ) : null}
+              {showDue ? (
+                <div>
+                  <dt>Due</dt>
+                  <dd>{row.dueLabel}</dd>
+                </div>
+              ) : null}
+              {showPriority ? (
+                <div>
+                  <dt>Priority</dt>
+                  <dd>
+                    <PriorityPill priority={row.priority} />
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }

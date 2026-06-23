@@ -22,7 +22,7 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
       title: "Name",
       dataIndex: "name",
       key: "name",
-      width: 220,
+      width: 170,
       sorter: (left, right) => (left.name || "").localeCompare(right.name || ""),
       render: (name: string | null) => name || "No name"
     },
@@ -30,14 +30,14 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
       title: "Email",
       dataIndex: "email",
       key: "email",
-      width: 280,
+      width: 230,
       sorter: (left, right) => left.email.localeCompare(right.email)
     },
     {
       title: "Department",
       dataIndex: "category",
       key: "category",
-      width: 180,
+      width: 140,
       filters: [
         { text: "IT", value: "IT" },
         { text: "Sales", value: "Sales" },
@@ -53,7 +53,7 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
       title: "Level",
       dataIndex: "role",
       key: "role",
-      width: 150,
+      width: 112,
       filters: [
         { text: "Admin", value: "admin" },
         { text: "Manager", value: "manager" },
@@ -70,14 +70,14 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
           <AdminArchiveUserForm userId={user.id} role={user.role} />
         </span>
       ),
-      width: 120
+      width: 104
     }
   ];
-  const { columns, scrollX } = useResizableAntColumns(baseColumns, "admin-users-ant-table-widths", 92);
+  const { columns, scrollX } = useResizableAntColumns(baseColumns, "admin-users-ant-table-widths-compact-v2", 84);
 
   return (
     <>
-      <div className="ant-data-table-shell">
+      <div className="ant-data-table-shell admin-users-table-shell">
         <Table<AdminUserRow>
           bordered
           columns={columns}
@@ -95,7 +95,7 @@ export function AdminUsersTable({ users }: { users: AdminUserRow[] }) {
           pagination={false}
           rowKey="id"
           scroll={{ x: scrollX }}
-          size="middle"
+          size="small"
           tableLayout="fixed"
         />
       </div>

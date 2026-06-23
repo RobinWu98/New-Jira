@@ -5,10 +5,16 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   clearTwoFactorChallenge,
+  clearPinDevice,
+  clearPinDeviceCookie,
   clearTwoFactorTrust,
+  createPinDeviceCookie,
   createSession,
   createTwoFactorTrust,
   destroySession,
+  hasValidPinDeviceForUser,
+  getPinDeviceTokenHash,
+  getRememberedPinUser,
   getTwoFactorChallengeUser,
   requireAdmin,
   requireCreateProject,
@@ -55,6 +61,14 @@ function validateEmail(email: string) {
 
 function validatePassword(password: string) {
   return password.length >= 8;
+}
+
+function validatePin(pin: string) {
+  return /^\d{4}$/.test(pin);
+}
+
+async function redirectAfterPasswordLogin(userId: string): Promise<never> {
+  redirect((await hasValidPinDeviceForUser(userId)) ? "/main-page" : "/settings/pin?setup=required");
 }
 
 function normalizeProjectStatus(status: string) {
@@ -296,7 +310,7 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
     return { error: "This email is already registered." };
   }
 
-  redirect("/main-page");
+  redirect("/settings/pin?setup=required");
 }
 
 export async function loginAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -314,7 +328,7 @@ export async function loginAction(_: AuthActionState, formData: FormData): Promi
   }
 
   await createSession(user.id);
-  redirect("/main-page");
+  return await redirectAfterPasswordLogin(user.id);
 }
 
 export async function verifyLoginTwoFactorAction(
@@ -351,7 +365,143 @@ export async function verifyLoginTwoFactorAction(
   await clearTwoFactorChallenge();
   await createTwoFactorTrust(challengeUser.id);
   await createSession(challengeUser.id);
+  return await redirectAfterPasswordLogin(challengeUser.id);
+}
+
+export async function setupPinAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const user = await requireUser();
+  const currentPin = asString(formData, "currentPin");
+  const pin = asString(formData, "newPin");
+  const confirmPin = asString(formData, "confirmNewPin");
+  const redirectTo = asString(formData, "redirectTo");
+  const hasCurrentPin = asString(formData, "hasCurrentPin") === "true";
+
+  if (!validatePin(pin)) {
+    return { error: "New PIN must be exactly 4 numbers." };
+  }
+
+  if (pin !== confirmPin) {
+    return { error: "New PIN confirmation does not match." };
+  }
+
+  const currentDeviceTokenHash = await getPinDeviceTokenHash();
+  const existingDevice = currentDeviceTokenHash
+    ? await query<{ id: string; pin_hash: string }>(
+        `SELECT id, pin_hash
+         FROM pin_login_devices
+         WHERE user_id = $1
+           AND device_token_hash = $2
+           AND expires_at > now()
+         LIMIT 1`,
+        [user.id, currentDeviceTokenHash]
+      )
+    : { rows: [] };
+  const existingPin = existingDevice.rows[0];
+
+  if (hasCurrentPin) {
+    if (!existingPin) {
+      return { error: "Current PIN is not available for this browser. Log in with your password again." };
+    }
+
+    if (!validatePin(currentPin)) {
+      return { error: "Current PIN must be exactly 4 numbers." };
+    }
+
+    if (!(await bcrypt.compare(currentPin, existingPin.pin_hash))) {
+      return { error: "Current PIN is incorrect." };
+    }
+  }
+
+  const deviceToken = randomToken();
+  const deviceTokenHash = hashToken(deviceToken);
+  const pinHash = await bcrypt.hash(pin, 12);
+
+  if (existingPin) {
+    await query("DELETE FROM pin_login_devices WHERE id = $1", [existingPin.id]);
+  }
+
+  await query(
+    `INSERT INTO pin_login_devices (user_id, device_token_hash, pin_hash, expires_at)
+     VALUES ($1, $2, $3, now() + interval '30 days')`,
+    [user.id, deviceTokenHash, pinHash]
+  );
+  await createPinDeviceCookie(deviceToken);
+  revalidatePath("/settings/pin");
+
+  if (redirectTo === "/main-page") {
+    redirect("/main-page");
+  }
+
+  return { message: "PIN has been updated for this browser." };
+}
+
+export async function verifyPinLoginAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const pin = asString(formData, "pin");
+  const rememberedUser = await getRememberedPinUser();
+  const tokenHash = await getPinDeviceTokenHash();
+
+  if (!rememberedUser || !tokenHash) {
+    return { error: "This browser is not set up for PIN access." };
+  }
+
+  if (!validatePin(pin)) {
+    return { error: "Enter your 4-digit PIN." };
+  }
+
+  const result = await query<{
+    failed_attempts: number;
+    id: string;
+    locked_until: Date | string | null;
+    pin_hash: string;
+    user_id: string;
+  }>(
+    `SELECT id, user_id, pin_hash, failed_attempts, locked_until
+     FROM pin_login_devices
+     WHERE device_token_hash = $1
+       AND expires_at > now()
+     LIMIT 1`,
+    [tokenHash]
+  );
+  const device = result.rows[0];
+
+  if (!device) {
+    await clearPinDevice();
+    return { error: "PIN access has expired. Please log in with your password." };
+  }
+
+  if (device.locked_until && new Date(device.locked_until) > new Date()) {
+    return { error: "Too many incorrect attempts. Use password login, or try again later." };
+  }
+
+  if (!(await bcrypt.compare(pin, device.pin_hash))) {
+    const nextAttempts = device.failed_attempts + 1;
+    await query(
+      `UPDATE pin_login_devices
+       SET failed_attempts = $1,
+           locked_until = CASE WHEN $1 >= 5 THEN now() + interval '10 minutes' ELSE locked_until END
+       WHERE id = $2`,
+      [nextAttempts, device.id]
+    );
+
+    return { error: nextAttempts >= 5 ? "Too many incorrect attempts. Try again in 10 minutes." : "PIN is incorrect." };
+  }
+
+  await query(
+    `UPDATE pin_login_devices
+     SET failed_attempts = 0,
+         locked_until = NULL,
+         last_used_at = now(),
+         expires_at = now() + interval '30 days'
+     WHERE id = $1`,
+    [device.id]
+  );
+  await createSession(device.user_id);
   redirect("/main-page");
+}
+
+export async function clearPinDeviceAction() {
+  await clearPinDeviceCookie();
+  redirect("/login");
 }
 
 export async function logoutAction() {
@@ -687,6 +837,7 @@ export async function createSubtaskAction(_: AuthActionState, formData: FormData
   const projectId = asString(formData, "projectId");
   const taskId = asString(formData, "taskId");
   const title = asString(formData, "title");
+  const descriptionInput = asString(formData, "description");
   const assignedToId = asString(formData, "assignedToId");
   const startDate = asString(formData, "startDate");
   const dueDate = asString(formData, "dueDate");
@@ -727,8 +878,10 @@ export async function createSubtaskAction(_: AuthActionState, formData: FormData
     return { error: "Assigned user is invalid." };
   }
 
+  const description = descriptionInput || defaultTaskDescription(title);
+
   const result = await query<{ id: string }>(
-    `INSERT INTO subtasks (task_id, title, assigned_to_id, start_date, due_date, priority, status)
+    `INSERT INTO subtasks (task_id, title, description, assigned_to_id, start_date, due_date, priority, status)
      VALUES (
        $1,
        $2,
@@ -736,14 +889,15 @@ export async function createSubtaskAction(_: AuthActionState, formData: FormData
        $4,
        $5,
        $6,
+       $7,
        CASE
-         WHEN $7::text <> 'done' AND $5::date IS NOT NULL AND $5::date < current_date THEN 'overdue'
-         WHEN $7::text = 'overdue' THEN 'todo'
-         ELSE $7::text
+         WHEN $8::text <> 'done' AND $6::date IS NOT NULL AND $6::date < current_date THEN 'overdue'
+         WHEN $8::text = 'overdue' THEN 'todo'
+         ELSE $8::text
        END
      )
      RETURNING id`,
-    [taskId, title, assignedToId, startDate || null, dueDate || null, priority, status]
+    [taskId, title, description, assignedToId, startDate || null, dueDate || null, priority, status]
   );
   await createWorkItemLog({
     action: "created",
@@ -764,6 +918,7 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
   const taskId = asString(formData, "taskId");
   const subtaskId = asString(formData, "subtaskId");
   const title = asString(formData, "title");
+  const descriptionInput = asString(formData, "description");
   const assignedToId = asString(formData, "assignedToId");
   const startDate = asString(formData, "startDate");
   const dueDate = asString(formData, "dueDate");
@@ -786,6 +941,8 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
     return { error: "Sub-task due date cannot be earlier than the start date." };
   }
 
+  const description = descriptionInput || defaultTaskDescription(title);
+
   const assigneeResult = await query<{ email: string; id: string; name: string | null }>(
     "SELECT id, name, email::text AS email FROM users WHERE id = $1 AND archived_at IS NULL LIMIT 1",
     [assignedToId]
@@ -800,6 +957,7 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
     assigned_to_email: string;
     assigned_to_id: string;
     assigned_to_name: string | null;
+    description: string | null;
     due_date: Date | string | null;
     priority: string;
     start_date: Date | string | null;
@@ -808,6 +966,7 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
   }>(
     `SELECT
        subtasks.title,
+       subtasks.description,
        subtasks.assigned_to_id,
        users.name AS assigned_to_name,
        users.email::text AS assigned_to_email,
@@ -835,25 +994,26 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
   const result = await query<{ id: string; status: string }>(
     `UPDATE subtasks
      SET title = $1,
-         assigned_to_id = $2,
-         start_date = $3,
-         due_date = $4,
-         priority = $5,
+         description = $2,
+         assigned_to_id = $3,
+         start_date = $4,
+         due_date = $5,
+         priority = $6,
          status = CASE
-           WHEN $6::text <> 'done' AND $4::date IS NOT NULL AND $4::date < current_date THEN 'overdue'
-           WHEN $6::text = 'overdue' THEN 'todo'
-           ELSE $6::text
+           WHEN $7::text <> 'done' AND $5::date IS NOT NULL AND $5::date < current_date THEN 'overdue'
+           WHEN $7::text = 'overdue' THEN 'todo'
+           ELSE $7::text
          END,
          updated_at = now()
      FROM tasks
-     WHERE subtasks.id = $7
-       AND subtasks.task_id = $8
+     WHERE subtasks.id = $8
+       AND subtasks.task_id = $9
        AND tasks.id = subtasks.task_id
-       AND tasks.project_id = $9
+       AND tasks.project_id = $10
        AND subtasks.archived_at IS NULL
        AND tasks.archived_at IS NULL
      RETURNING subtasks.id, subtasks.status`,
-    [title, assignedToId, startDate || null, dueDate || null, priority, status, subtaskId, taskId, projectId]
+    [title, description, assignedToId, startDate || null, dueDate || null, priority, status, subtaskId, taskId, projectId]
   );
 
   if (!result.rows[0]) {
@@ -863,6 +1023,7 @@ export async function updateSubtaskAction(_: AuthActionState, formData: FormData
   const logs = getWorkItemChangeLogs({
     assignedTo: assignee,
     current,
+    description,
     dueDate,
     priority,
     startDate,
@@ -1014,11 +1175,15 @@ export async function updateTaskStatusAction(_: AuthActionState, formData: FormD
     return { error: "Task is missing." };
   }
 
-  const currentResult = await query<{ status: string }>(
-    "SELECT status FROM tasks WHERE id = $1 AND project_id = $2 AND archived_at IS NULL LIMIT 1",
+  const currentResult = await query<{ assigned_to_id: string; status: string }>(
+    "SELECT assigned_to_id, status FROM tasks WHERE id = $1 AND project_id = $2 AND archived_at IS NULL LIMIT 1",
     [taskId, projectId]
   );
   const current = currentResult.rows[0];
+
+  if (!current) {
+    return { error: "Task was not found." };
+  }
 
   const result = await query<{
     id: string;
@@ -1084,8 +1249,8 @@ export async function updateSubtaskStatusAction(_: AuthActionState, formData: Fo
     return { error: "Sub-task is missing." };
   }
 
-  const currentResult = await query<{ status: string }>(
-    `SELECT subtasks.status
+  const currentResult = await query<{ assigned_to_id: string; status: string }>(
+    `SELECT subtasks.assigned_to_id, subtasks.status
      FROM subtasks
      JOIN tasks ON tasks.id = subtasks.task_id
      WHERE subtasks.id = $1
@@ -1097,6 +1262,10 @@ export async function updateSubtaskStatusAction(_: AuthActionState, formData: Fo
     [subtaskId, taskId, projectId]
   );
   const current = currentResult.rows[0];
+
+  if (!current) {
+    return { error: "Sub-task was not found." };
+  }
 
   const result = await query<{
     id: string;
@@ -1494,7 +1663,7 @@ export async function completeInvitedRegistrationAction(
   await query("UPDATE user_registration_invites SET completed_at = now() WHERE id = $1", [invite.id]);
 
   await createSession(invite.user_id);
-  redirect("/main-page");
+  redirect("/settings/pin?setup=required");
 }
 
 export async function forgotPasswordAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -1569,9 +1738,14 @@ export async function changePasswordAction(_: AuthActionState, formData: FormDat
   const user = await requireUser();
   const currentPassword = asString(formData, "currentPassword");
   const newPassword = asString(formData, "newPassword");
+  const confirmNewPassword = asString(formData, "confirmNewPassword");
 
   if (!validatePassword(newPassword)) {
     return { error: "New password must be at least 8 characters." };
+  }
+
+  if (newPassword !== confirmNewPassword) {
+    return { error: "New password confirmation does not match." };
   }
 
   const result = await query<{ password_hash: string }>("SELECT password_hash FROM users WHERE id = $1", [user.id]);

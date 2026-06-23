@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/AuthForms";
 import { PageHeader } from "@/components/PageHeader";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getRememberedPinUser } from "@/lib/auth";
 
 export default async function LoginPage({
   searchParams
@@ -15,6 +15,12 @@ export default async function LoginPage({
     redirect("/main-page");
   }
 
+  const rememberedUser = await getRememberedPinUser();
+
+  if (rememberedUser) {
+    redirect("/pin");
+  }
+
   return (
     <main className="page">
       <div className="shell login-shell">
@@ -24,21 +30,6 @@ export default async function LoginPage({
             <div className="notice success">Password updated. Log in with your new password.</div>
           ) : null}
           <LoginForm />
-          <div className="login-role-list" aria-label="Test accounts">
-            <div>
-              <strong>Admin</strong>
-              <span>admin@example.com</span>
-            </div>
-            <div>
-              <strong>Manager</strong>
-              <span>ava.chen@example.com</span>
-            </div>
-            <div>
-              <strong>Staff</strong>
-              <span>mia.rodriguez@example.com</span>
-            </div>
-            <p>Password for all: <strong>Password123!</strong></p>
-          </div>
         </section>
       </div>
     </main>

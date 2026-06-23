@@ -12,7 +12,7 @@ export default async function ProfilePage() {
       <PageHeader title="User Profile" />
       <section className="panel">
         <h2>{user.name || user.email}</h2>
-        <div className="table-like compact">
+        <div className="table-like compact profile-table">
           <div>
             <strong>Name</strong>
             <span>{user.name || "Not set"}</span>
@@ -32,6 +32,12 @@ export default async function ProfilePage() {
         </div>
         <div className="button-row">
           <ProfileEditModal user={user} />
+          <UiButtonLink href="/settings/pin">
+            PIN Reset
+          </UiButtonLink>
+          <UiButtonLink href="/settings/password">
+            Password Reset
+          </UiButtonLink>
           {canManageUsers(user) ? (
             <UiButtonLink href="/admin/users">
               Manage Users

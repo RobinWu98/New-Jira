@@ -4,6 +4,7 @@ import { Button, Dropdown, Input, Popover, Space, Table } from "antd";
 import type { MenuProps } from "antd";
 import type { TableColumnsType, TableProps } from "antd";
 import type { SorterResult } from "antd/es/table/interface";
+import { createPortal } from "react-dom";
 import { useActionState, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   type AuthActionState,
@@ -25,9 +26,10 @@ import {
   updateTaskAction
 } from "@/lib/actions";
 import { SubmitButton } from "./FormStatus";
+import { DropdownArrowIcon, RightArrowIcon } from "./AntArrowIcons";
 import InlinePicker from "./InlinePicker";
 import { useResizableAntColumns } from "./ResizableAntColumns";
-import { PriorityPill, TaskStatusPill, UiButton } from "./UiControls";
+import { PriorityPill, StatusPill, TaskStatusPill, UiButton } from "./UiControls";
 
 export type UserOption = {
   id: string;
@@ -44,6 +46,7 @@ export type ProjectFormData = {
   ownerId: string;
   status: string;
   completedTaskCount?: number;
+  lastUpdate?: string;
   remainingTaskCount?: number;
   totalTaskCount?: number;
 };
@@ -65,6 +68,7 @@ export type SubtaskFormData = {
   projectId: string;
   taskId: string;
   title: string;
+  description: string;
   assignedToId: string;
   startDate: string;
   dueDate: string;
@@ -76,6 +80,8 @@ export type TaskListItemData = TaskFormData & {
   assignedTo: string;
   startLabel: string;
   dueLabel: string;
+  lastUpdate: string;
+  lastUpdateAt: number;
   projectName: string;
   comments?: TaskCommentData[];
   logs?: TaskLogData[];
@@ -85,6 +91,8 @@ export type SubtaskListItemData = SubtaskFormData & {
   assignedTo: string;
   startLabel: string;
   dueLabel: string;
+  lastUpdate: string;
+  lastUpdateAt: number;
   comments?: TaskCommentData[];
   logs?: TaskLogData[];
 };
@@ -126,6 +134,26 @@ export type TaskLogData = {
 };
 
 const initialState: AuthActionState = {};
+
+function truncateText(value: string, limit: number) {
+  return value.length > limit ? `${value.slice(0, limit).trimEnd()}...` : value;
+}
+
+function getProjectDisplayStatus(project: ProjectFormData) {
+  if (project.status === "done") {
+    return "done";
+  }
+
+  const dueDate = new Date(`${project.ddl}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return dueDate < today ? "overdue" : "active";
+}
+
+function formatProjectStatusLabel(status: string) {
+  return status === "done" ? "Completed" : status === "overdue" ? "Overdue" : "Ongoing";
+}
 
 function Feedback({ state }: { state: AuthActionState }) {
   if (state.error) {
@@ -170,7 +198,7 @@ function Modal({
           {trigger}
         </button>
       )}
-      {isOpen ? (
+      {isOpen && typeof document !== "undefined" ? createPortal(
         <div className="modal-backdrop" role="presentation">
           <div className="modal-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
             <div className="modal-header">
@@ -181,7 +209,8 @@ function Modal({
             </div>
             {children}
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </>
   );
@@ -520,6 +549,68 @@ function ProjectForm({
 }) {
   const [state, action] = useActionState(project ? updateProjectAction : createProjectAction, initialState);
   const ownerId = project?.ownerId || currentUserId;
+  const owner = users.find((user) => user.id === ownerId)?.label ?? ownerId;
+
+  if (readOnly && project) {
+    return (
+      <div className="readonly-work-item-form">
+        <div className="form-row">
+          <span>Project Name</span>
+          <div className="readonly-field">{project.name}</div>
+        </div>
+        <div className="form-row">
+          <span>Description</span>
+          <div className="readonly-field readonly-description">
+            {project.description ? truncateText(project.description, 250) : "No description"}
+          </div>
+        </div>
+        <div className="form-grid two-columns">
+          <div className="form-row">
+            <span>Start</span>
+            <div className="readonly-field">{project.startDate}</div>
+          </div>
+          <div className="form-row">
+            <span>Due Date</span>
+            <div className="readonly-field">{project.ddl}</div>
+          </div>
+        </div>
+        <div className="form-grid two-columns">
+          <div className="form-row">
+            <span>Creator</span>
+            <div className="readonly-field">{owner}</div>
+          </div>
+          <div className="form-row">
+            <span>Last Update</span>
+            <div className="readonly-field">{project.lastUpdate ?? "No update"}</div>
+          </div>
+        </div>
+        <div className="form-grid two-columns">
+          <div className="form-row">
+            <span>Status</span>
+            <div className="readonly-field">
+              <StatusPill status={getProjectDisplayStatus(project)}>
+                {formatProjectStatusLabel(getProjectDisplayStatus(project))}
+              </StatusPill>
+            </div>
+          </div>
+        </div>
+        <div className="form-grid two-columns project-task-counts">
+          <div className="form-row">
+            <span>Remaining Tasks</span>
+            <div className="readonly-field">{project.remainingTaskCount ?? 0}</div>
+          </div>
+          <div className="form-row">
+            <span>Completed Tasks</span>
+            <div className="readonly-field">{project.completedTaskCount ?? 0}</div>
+          </div>
+          <div className="form-row">
+            <span>Total Tasks</span>
+            <div className="readonly-field">{project.totalTaskCount ?? 0}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form action={readOnly ? undefined : action}>
@@ -589,8 +680,8 @@ function ProjectForm({
             defaultValue={project?.status ?? "active"}
             disabled={readOnly}
           >
-            <option value="active">Active</option>
-            <option value="done">Done</option>
+            <option value="active">Ongoing</option>
+            <option value="done">Completed</option>
           </select>
         </div>
       </div>
@@ -768,17 +859,63 @@ function ProjectActionMenu({ project }: { project: ProjectFormData }) {
 function TaskForm({
   projectId,
   users,
-  task
+  task,
+  readOnly = false
 }: {
   projectId: string;
   users: UserOption[];
   task?: TaskFormData;
+  readOnly?: boolean;
 }) {
   const [state, action] = useActionState(task ? updateTaskAction : createTaskAction, initialState);
+  const assignee = users.find((user) => user.id === task?.assignedToId)?.label ?? task?.assignedToId ?? "Unassigned";
+
+  if (readOnly && task) {
+    return (
+      <div className="readonly-work-item-form">
+        <div className="form-row">
+          <span>Task</span>
+          <div className="readonly-field">{task.title}</div>
+        </div>
+        <div className="form-row">
+          <span>Description</span>
+          <div className="readonly-field readonly-description">{task.description ? truncateText(task.description, 250) : "No description"}</div>
+        </div>
+        <div className="form-row">
+          <span>Assigned To</span>
+          <div className="readonly-field">{assignee}</div>
+        </div>
+        <div className="form-grid two-columns">
+          <div className="form-row">
+            <span>Start</span>
+            <div className="readonly-field">{task.startDate || "No date"}</div>
+          </div>
+          <div className="form-row">
+            <span>Due Date</span>
+            <div className="readonly-field">{task.dueDate || "No due date"}</div>
+          </div>
+        </div>
+        <div className="form-grid two-columns">
+          <div className="form-row">
+            <span>Priority</span>
+            <div className="readonly-field">
+              <PriorityPill priority={task.priority} />
+            </div>
+          </div>
+          <div className="form-row">
+            <span>Status</span>
+            <div className="readonly-field">
+              <TaskStatusPill status={task.status} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <form action={action}>
-      <Feedback state={state} />
+    <form action={readOnly ? undefined : action}>
+      {readOnly ? null : <Feedback state={state} />}
       <input name="projectId" type="hidden" value={projectId} />
       {task ? <input name="taskId" type="hidden" value={task.id} /> : null}
       <div className="form-row">
@@ -788,6 +925,7 @@ function TaskForm({
           name="title"
           type="text"
           defaultValue={task?.title}
+          disabled={readOnly}
           required
         />
       </div>
@@ -797,6 +935,7 @@ function TaskForm({
           id={`${task?.id ?? "new"}-task-description`}
           name="description"
           defaultValue={task?.description}
+          disabled={readOnly}
           placeholder="Describe the expected outcome, important context, and next action for this task."
         />
       </div>
@@ -806,6 +945,7 @@ function TaskForm({
           id={`${task?.id ?? "new"}-task-assigned`}
           name="assignedToId"
           defaultValue={task?.assignedToId ?? users[0]?.id}
+          disabled={readOnly}
           required
         >
           {users.map((user) => (
@@ -823,6 +963,7 @@ function TaskForm({
             name="startDate"
             type="date"
             defaultValue={task?.startDate}
+            disabled={readOnly}
           />
         </div>
         <div className="form-row">
@@ -832,13 +973,19 @@ function TaskForm({
             name="dueDate"
             type="date"
             defaultValue={task?.dueDate}
+            disabled={readOnly}
           />
         </div>
       </div>
       <div className="form-grid two-columns">
         <div className="form-row">
           <label htmlFor={`${task?.id ?? "new"}-task-priority`}>Priority</label>
-          <select id={`${task?.id ?? "new"}-task-priority`} name="priority" defaultValue={task?.priority ?? "medium"}>
+          <select
+            id={`${task?.id ?? "new"}-task-priority`}
+            name="priority"
+            defaultValue={task?.priority ?? "medium"}
+            disabled={readOnly}
+          >
             <option value="low">Low</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
@@ -846,7 +993,12 @@ function TaskForm({
         </div>
         <div className="form-row">
           <label htmlFor={`${task?.id ?? "new"}-task-status`}>Status</label>
-          <select id={`${task?.id ?? "new"}-task-status`} name="status" defaultValue={task?.status ?? "todo"}>
+          <select
+            id={`${task?.id ?? "new"}-task-status`}
+            name="status"
+            defaultValue={task?.status ?? "todo"}
+            disabled={readOnly}
+          >
             <option value="todo">Todo</option>
             <option value="in_progress">In Progress</option>
             <option value="overdue">Overdue</option>
@@ -854,9 +1006,11 @@ function TaskForm({
           </select>
         </div>
       </div>
-      <div className="button-row">
-        <SubmitButton>{task ? "Update Task" : "Create Task"}</SubmitButton>
-      </div>
+      {readOnly ? null : (
+        <div className="button-row">
+          <SubmitButton>{task ? "Update Task" : "Create Task"}</SubmitButton>
+        </div>
+      )}
     </form>
   );
 }
@@ -869,11 +1023,45 @@ export function CreateTaskModal({ projectId, users }: { projectId: string; users
   );
 }
 
-export function EditTaskModal({ projectId, users, task }: { projectId: string; users: UserOption[]; task: TaskFormData }) {
+export function EditTaskModal({
+  projectId,
+  users,
+  task,
+  triggerKind = "ui"
+}: {
+  projectId: string;
+  users: UserOption[];
+  task: TaskFormData;
+  triggerKind?: "ui" | "antd";
+}) {
   return (
-    <Modal title="Edit Task" trigger="Edit">
+    <Modal title="Edit Task" trigger="Edit" triggerKind={triggerKind}>
       <WorkItemActionMenu item={task} projectId={projectId} type="task" />
       <TaskForm projectId={projectId} users={users} task={task} />
+      <div className="task-detail-actions">
+        <CreateSubtaskModal projectId={projectId} taskId={task.id} users={users} />
+      </div>
+    </Modal>
+  );
+}
+
+export function ViewTaskModal({
+  projectId,
+  users,
+  task,
+  triggerKind = "antd"
+}: {
+  projectId: string;
+  users: UserOption[];
+  task: TaskFormData;
+  triggerKind?: "ui" | "antd";
+}) {
+  return (
+    <Modal title="View Task" trigger="View" triggerKind={triggerKind}>
+      <TaskForm projectId={projectId} users={users} task={task} readOnly />
+      <div className="task-detail-actions">
+        <CreateSubtaskModal projectId={projectId} taskId={task.id} users={users} />
+      </div>
     </Modal>
   );
 }
@@ -991,18 +1179,66 @@ function SubtaskForm({
   projectId,
   taskId,
   users,
-  subtask
+  subtask,
+  readOnly = false
 }: {
   projectId: string;
   taskId: string;
   users: UserOption[];
   subtask?: SubtaskFormData;
+  readOnly?: boolean;
 }) {
   const [state, action] = useActionState(subtask ? updateSubtaskAction : createSubtaskAction, initialState);
+  const assignee = users.find((user) => user.id === subtask?.assignedToId)?.label ?? subtask?.assignedToId ?? "Unassigned";
+
+  if (readOnly && subtask) {
+    return (
+      <div className="readonly-work-item-form">
+        <div className="form-row">
+          <span>Sub-task</span>
+          <div className="readonly-field">{subtask.title}</div>
+        </div>
+        <div className="form-row">
+          <span>Description</span>
+          <div className="readonly-field readonly-description">
+            {subtask.description ? truncateText(subtask.description, 250) : "No description"}
+          </div>
+        </div>
+        <div className="form-row">
+          <span>Assigned To</span>
+          <div className="readonly-field">{assignee}</div>
+        </div>
+        <div className="form-grid two-columns">
+          <div className="form-row">
+            <span>Start</span>
+            <div className="readonly-field">{subtask.startDate || "No date"}</div>
+          </div>
+          <div className="form-row">
+            <span>Due Date</span>
+            <div className="readonly-field">{subtask.dueDate || "No due date"}</div>
+          </div>
+        </div>
+        <div className="form-grid two-columns">
+          <div className="form-row">
+            <span>Priority</span>
+            <div className="readonly-field">
+              <PriorityPill priority={subtask.priority} />
+            </div>
+          </div>
+          <div className="form-row">
+            <span>Status</span>
+            <div className="readonly-field">
+              <TaskStatusPill status={subtask.status} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <form action={action}>
-      <Feedback state={state} />
+    <form action={readOnly ? undefined : action}>
+      {readOnly ? null : <Feedback state={state} />}
       <input name="projectId" type="hidden" value={projectId} />
       <input name="taskId" type="hidden" value={taskId} />
       {subtask ? <input name="subtaskId" type="hidden" value={subtask.id} /> : null}
@@ -1013,7 +1249,18 @@ function SubtaskForm({
           name="title"
           type="text"
           defaultValue={subtask?.title}
+          disabled={readOnly}
           required
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor={`${subtask?.id ?? taskId}-subtask-description`}>Description</label>
+        <textarea
+          id={`${subtask?.id ?? taskId}-subtask-description`}
+          name="description"
+          defaultValue={subtask?.description}
+          disabled={readOnly}
+          placeholder="Describe the expected outcome, important context, and next action for this sub-task."
         />
       </div>
       <div className="form-row">
@@ -1022,6 +1269,7 @@ function SubtaskForm({
           id={`${subtask?.id ?? taskId}-subtask-assigned`}
           name="assignedToId"
           defaultValue={subtask?.assignedToId ?? users[0]?.id}
+          disabled={readOnly}
           required
         >
           {users.map((user) => (
@@ -1039,6 +1287,7 @@ function SubtaskForm({
             name="startDate"
             type="date"
             defaultValue={subtask?.startDate}
+            disabled={readOnly}
           />
         </div>
         <div className="form-row">
@@ -1048,6 +1297,7 @@ function SubtaskForm({
             name="dueDate"
             type="date"
             defaultValue={subtask?.dueDate}
+            disabled={readOnly}
           />
         </div>
       </div>
@@ -1058,6 +1308,7 @@ function SubtaskForm({
             id={`${subtask?.id ?? taskId}-subtask-priority`}
             name="priority"
             defaultValue={subtask?.priority ?? "medium"}
+            disabled={readOnly}
           >
             <option value="low">Low</option>
             <option value="medium">Medium</option>
@@ -1066,7 +1317,12 @@ function SubtaskForm({
         </div>
         <div className="form-row">
           <label htmlFor={`${subtask?.id ?? taskId}-subtask-status`}>Status</label>
-          <select id={`${subtask?.id ?? taskId}-subtask-status`} name="status" defaultValue={subtask?.status ?? "todo"}>
+          <select
+            id={`${subtask?.id ?? taskId}-subtask-status`}
+            name="status"
+            defaultValue={subtask?.status ?? "todo"}
+            disabled={readOnly}
+          >
             <option value="todo">Todo</option>
             <option value="in_progress">In Progress</option>
             <option value="overdue">Overdue</option>
@@ -1074,9 +1330,11 @@ function SubtaskForm({
           </select>
         </div>
       </div>
-      <div className="button-row">
-        <SubmitButton>{subtask ? "Update Sub-task" : "Create Sub-task"}</SubmitButton>
-      </div>
+      {readOnly ? null : (
+        <div className="button-row">
+          <SubmitButton>{subtask ? "Update Sub-task" : "Create Sub-task"}</SubmitButton>
+        </div>
+      )}
     </form>
   );
 }
@@ -1105,17 +1363,39 @@ export function EditSubtaskModal({
   projectId,
   taskId,
   users,
-  subtask
+  subtask,
+  triggerKind = "ui"
 }: {
   projectId: string;
   taskId: string;
   users: UserOption[];
   subtask: SubtaskFormData;
+  triggerKind?: "ui" | "antd";
 }) {
   return (
-    <Modal title="Edit Sub-task" trigger="Edit">
+    <Modal title="Edit Sub-task" trigger="Edit" triggerKind={triggerKind}>
       <WorkItemActionMenu item={subtask} projectId={projectId} taskId={taskId} type="subtask" />
       <SubtaskForm projectId={projectId} taskId={taskId} users={users} subtask={subtask} />
+    </Modal>
+  );
+}
+
+export function ViewSubtaskModal({
+  projectId,
+  taskId,
+  users,
+  subtask,
+  triggerKind = "antd"
+}: {
+  projectId: string;
+  taskId: string;
+  users: UserOption[];
+  subtask: SubtaskFormData;
+  triggerKind?: "ui" | "antd";
+}) {
+  return (
+    <Modal title="View Sub-task" trigger="View" triggerKind={triggerKind}>
+      <SubtaskForm projectId={projectId} taskId={taskId} users={users} subtask={subtask} readOnly />
     </Modal>
   );
 }
@@ -1227,17 +1507,24 @@ function taskDateRank(value: string) {
 export function ProjectTasksAntTable({
   canManageTask,
   canUpdateStatus,
+  currentUserId,
   rows,
   users
 }: {
   canManageTask: boolean;
   canUpdateStatus: boolean;
+  currentUserId: string;
   rows: ProjectTaskAntRow[];
   users: UserOption[];
 }) {
-  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(
+    () => new Set(rows.filter((row) => row.subtasks.length).map((row) => row.task.id))
+  );
   const [sortedInfo, setSortedInfo] = useState<SorterResult<ProjectTaskTableRow>>({});
   const showActions = canManageTask || canUpdateStatus;
+  const canUpdateRowStatus = (_row?: ProjectTaskTableRow) => canUpdateStatus;
+  const isAssignedToCurrentUser = (row: ProjectTaskTableRow) =>
+    row.kind === "task" ? row.task.assignedToId === currentUserId : row.subtask.assignedToId === currentUserId;
 
   const clearAll = () => {
     setSortedInfo({});
@@ -1277,7 +1564,7 @@ export function ProjectTasksAntTable({
       comments: task.comments,
       logs: task.logs,
       mentionUsers: users,
-      subtaskCreateUsers: canManageTask ? users : undefined
+      subtaskCreateUsers: users
     };
 
     return <TaskDetailModal task={taskDetail} />;
@@ -1290,6 +1577,7 @@ export function ProjectTasksAntTable({
       taskId: subtask.taskId,
       type: "subtask" as const,
       title: subtask.title,
+      description: subtask.description,
       projectName,
       assignedTo: subtask.assignedTo,
       startDate: subtask.startLabel,
@@ -1306,6 +1594,7 @@ export function ProjectTasksAntTable({
 
   const getRowStartDate = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.startDate : row.subtask.startDate);
   const getRowDueDate = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.dueDate : row.subtask.dueDate);
+  const getRowLastUpdateAt = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.lastUpdateAt : row.subtask.lastUpdateAt);
   const getRowPriority = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.priority : row.subtask.priority);
   const getRowStatus = (row: ProjectTaskTableRow) => (row.kind === "task" ? row.task.status : row.subtask.status);
 
@@ -1316,6 +1605,10 @@ export function ProjectTasksAntTable({
 
     if (sortedInfo.columnKey === "dueDate") {
       return taskDateRank(getRowDueDate(row));
+    }
+
+    if (sortedInfo.columnKey === "lastUpdate") {
+      return getRowLastUpdateAt(row);
     }
 
     if (sortedInfo.columnKey === "priority") {
@@ -1366,31 +1659,34 @@ export function ProjectTasksAntTable({
       title: "",
       key: "expand",
       render: (_value, row) =>
-        row.kind === "task" ? (
+        row.kind === "task" && row.subtasks.length ? (
           <Button
             aria-label={expandedTaskIds.has(row.task.id) ? "Collapse sub-tasks" : "Expand sub-tasks"}
             className="task-expand-button"
-            disabled={!row.subtasks.length}
             onClick={() => toggleTaskExpanded(row.task.id)}
             size="small"
             type="text"
           >
-            {row.subtasks.length ? (expandedTaskIds.has(row.task.id) ? "-" : "+") : ""}
+            {expandedTaskIds.has(row.task.id) ? <DropdownArrowIcon /> : <RightArrowIcon />}
           </Button>
+        ) : row.kind === "task" ? (
+          <span className="task-expand-button task-expand-placeholder" aria-hidden="true">
+            <RightArrowIcon />
+          </span>
         ) : null,
-      width: 48
+      width: 56
     },
     {
       title: "Task",
       key: "title",
-      width: 260,
+      width: 380,
       render: (_value, row) =>
         row.kind === "task" ? renderTaskDetail(row.task) : renderSubtaskDetail(row.subtask, row.parentTask.projectName)
     },
     {
       title: "Assigned To",
       key: "assignedTo",
-      width: 180,
+      width: 220,
       render: (_value, row) => (row.kind === "task" ? row.task.assignedTo : row.subtask.assignedTo)
     },
     {
@@ -1399,7 +1695,7 @@ export function ProjectTasksAntTable({
       render: (_value, row) => (row.kind === "task" ? row.task.startLabel : row.subtask.startLabel),
       sorter: true,
       sortOrder: sortedInfo.columnKey === "startDate" ? sortedInfo.order : null,
-      width: 120
+      width: 136
     },
     {
       title: "Due Date",
@@ -1407,13 +1703,23 @@ export function ProjectTasksAntTable({
       render: (_value, row) => (row.kind === "task" ? row.task.dueLabel : row.subtask.dueLabel),
       sorter: true,
       sortOrder: sortedInfo.columnKey === "dueDate" ? sortedInfo.order : null,
-      width: 130
+      width: 148
+    },
+    {
+      title: "Last Update",
+      key: "lastUpdate",
+      render: (_value, row) => (row.kind === "task" ? row.task.lastUpdate : row.subtask.lastUpdate),
+      sorter: true,
+      sortOrder: sortedInfo.columnKey === "lastUpdate" ? sortedInfo.order : null,
+      width: 168
     },
     {
       title: "Priority",
       key: "priority",
       render: (_value, row) => (
-        row.kind === "task" ? (
+        !canManageTask ? (
+          <PriorityPill priority={row.kind === "task" ? row.task.priority : row.subtask.priority} />
+        ) : row.kind === "task" ? (
           <InlinePicker
             kind="priority"
             type="task"
@@ -1421,6 +1727,7 @@ export function ProjectTasksAntTable({
             projectId={row.task.projectId}
             taskId={row.task.id}
             title={row.task.title}
+            description={row.task.description}
             assignedToId={row.task.assignedToId}
             startDate={row.task.startDate}
             dueDate={row.task.dueDate}
@@ -1435,6 +1742,7 @@ export function ProjectTasksAntTable({
             taskId={row.subtask.taskId}
             subtaskId={row.subtask.id}
             title={row.subtask.title}
+            description={row.subtask.description}
             assignedToId={row.subtask.assignedToId}
             startDate={row.subtask.startDate}
             dueDate={row.subtask.dueDate}
@@ -1444,13 +1752,15 @@ export function ProjectTasksAntTable({
       ),
       sorter: true,
       sortOrder: sortedInfo.columnKey === "priority" ? sortedInfo.order : null,
-      width: 130
+      width: 148
     },
     {
       title: "Status",
       key: "status",
       render: (_value, row) => (
-        row.kind === "task" ? (
+        !canUpdateRowStatus(row) ? (
+          <TaskStatusPill status={row.kind === "task" ? row.task.status : row.subtask.status} />
+        ) : row.kind === "task" ? (
           <InlinePicker kind="status" type="task" current={row.task.status} projectId={row.task.projectId} taskId={row.task.id} />
         ) : (
           <InlinePicker
@@ -1465,7 +1775,7 @@ export function ProjectTasksAntTable({
       ),
       sorter: true,
       sortOrder: sortedInfo.columnKey === "status" ? sortedInfo.order : null,
-      width: 150
+      width: 172
     },
     ...(showActions
       ? [
@@ -1476,41 +1786,204 @@ export function ProjectTasksAntTable({
               canManageTask ? (
                 <span className="table-actions">
                   {row.kind === "task" ? (
-                    <EditTaskModal projectId={row.task.projectId} users={users} task={row.task} />
+                    <EditTaskModal projectId={row.task.projectId} users={users} task={row.task} triggerKind="antd" />
                   ) : (
-                    <EditSubtaskModal projectId={row.subtask.projectId} taskId={row.subtask.taskId} users={users} subtask={row.subtask} />
+                    <EditSubtaskModal
+                      projectId={row.subtask.projectId}
+                      taskId={row.subtask.taskId}
+                      users={users}
+                      subtask={row.subtask}
+                      triggerKind="antd"
+                    />
                   )}
                 </span>
-              ) : null,
-            width: 110
+              ) : row.kind === "task" ? (
+                <ViewTaskModal projectId={row.task.projectId} users={users} task={row.task} />
+              ) : (
+                <ViewSubtaskModal
+                  projectId={row.subtask.projectId}
+                  taskId={row.subtask.taskId}
+                  users={users}
+                  subtask={row.subtask}
+                />
+              ),
+            width: 132
           }
         ]
       : [])
   ];
 
-  const { columns, scrollX } = useResizableAntColumns(baseColumns, "project-task-ant-table-widths", 92);
+  const { columns, scrollX } = useResizableAntColumns(baseColumns, "project-task-ant-table-widths-wide-v3", 92);
 
   return (
-    <div className="ant-data-table-shell">
-      <div className="ant-data-table-toolbar">
-        <strong>Tasks ({rows.length})</strong>
-        <Space wrap>
-          <Button onClick={clearAll}>Reset sorter</Button>
-        </Space>
+    <>
+      <div className="ant-data-table-shell responsive-desktop-table">
+        <div className="ant-data-table-toolbar">
+          <strong>Tasks ({rows.length})</strong>
+          <Space wrap>
+            <Button onClick={clearAll}>Reset sorter</Button>
+          </Space>
+        </div>
+        <Table<ProjectTaskTableRow>
+          bordered
+          columns={columns}
+          dataSource={tableRows}
+          locale={{ emptyText: "No tasks yet." }}
+          onChange={handleChange}
+          pagination={false}
+          rowClassName={(row) =>
+            `project-task-ant-row${row.kind === "subtask" ? " project-subtask-ant-row" : ""}${isAssignedToCurrentUser(row) ? " can-update-status" : ""}`
+          }
+          rowKey="key"
+          scroll={{ x: scrollX }}
+          size="middle"
+          tableLayout="fixed"
+        />
       </div>
-      <Table<ProjectTaskTableRow>
-        bordered
-        columns={columns}
-        dataSource={tableRows}
-        locale={{ emptyText: "No tasks yet." }}
-        onChange={handleChange}
-        pagination={false}
-        rowClassName={(row) => `project-task-ant-row ${row.kind === "subtask" ? "project-subtask-ant-row" : ""}`}
-        rowKey="key"
-        scroll={{ x: scrollX }}
-        size="middle"
-        tableLayout="fixed"
-      />
-    </div>
+      <div className="mobile-card-list project-tasks-mobile-list" aria-label="Tasks">
+        <div className="mobile-list-toolbar">
+          <strong>Tasks ({rows.length})</strong>
+          <Button onClick={clearAll}>Reset sorter</Button>
+        </div>
+        {tableRows.length ? (
+          tableRows.map((row) => {
+            const isTask = row.kind === "task";
+            const task = isTask ? row.task : row.subtask;
+
+            return (
+              <article className={`mobile-data-card${isTask ? "" : " is-subtask"}${isAssignedToCurrentUser(row) ? " can-update-status" : ""}`} key={row.key}>
+                <div className="mobile-card-main">
+                  {isTask ? (
+                    row.subtasks.length ? (
+                      <Button
+                        aria-label={expandedTaskIds.has(row.task.id) ? "Collapse sub-tasks" : "Expand sub-tasks"}
+                        className="task-expand-button"
+                        onClick={() => toggleTaskExpanded(row.task.id)}
+                        size="small"
+                        type="text"
+                      >
+                        {expandedTaskIds.has(row.task.id) ? <DropdownArrowIcon /> : <RightArrowIcon />}
+                      </Button>
+                    ) : (
+                      <span className="task-expand-button task-expand-placeholder" aria-hidden="true">
+                        <RightArrowIcon />
+                      </span>
+                    )
+                  ) : null}
+                  <div className="mobile-card-title-wrap">
+                    {isTask ? renderTaskDetail(row.task) : renderSubtaskDetail(row.subtask, row.parentTask.projectName)}
+                    {!isTask ? <span className="mobile-card-kicker">Subtask</span> : null}
+                  </div>
+                </div>
+                <dl className="mobile-card-meta">
+                  <div>
+                    <dt>Assigned</dt>
+                    <dd>{task.assignedTo}</dd>
+                  </div>
+                  <div>
+                    <dt>Start</dt>
+                    <dd>{task.startLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>Due</dt>
+                    <dd>{task.dueLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>Last Update</dt>
+                    <dd>{task.lastUpdate}</dd>
+                  </div>
+                  <div>
+                    <dt>Priority</dt>
+                    <dd>
+                      {!canManageTask ? (
+                        <PriorityPill priority={task.priority} />
+                      ) : isTask ? (
+                        <InlinePicker
+                          kind="priority"
+                          type="task"
+                          current={row.task.priority}
+                          projectId={row.task.projectId}
+                          taskId={row.task.id}
+                          title={row.task.title}
+                          description={row.task.description}
+                          assignedToId={row.task.assignedToId}
+                          startDate={row.task.startDate}
+                          dueDate={row.task.dueDate}
+                          status={row.task.status}
+                        />
+                      ) : (
+                        <InlinePicker
+                          kind="priority"
+                          type="subtask"
+                          current={row.subtask.priority}
+                          projectId={row.subtask.projectId}
+                          taskId={row.subtask.taskId}
+                          subtaskId={row.subtask.id}
+                          title={row.subtask.title}
+                          description={row.subtask.description}
+                          assignedToId={row.subtask.assignedToId}
+                          startDate={row.subtask.startDate}
+                          dueDate={row.subtask.dueDate}
+                          status={row.subtask.status}
+                        />
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>
+                      {!canUpdateRowStatus(row) ? (
+                        <TaskStatusPill status={task.status} />
+                      ) : isTask ? (
+                        <InlinePicker kind="status" type="task" current={row.task.status} projectId={row.task.projectId} taskId={row.task.id} />
+                      ) : (
+                        <InlinePicker
+                          kind="status"
+                          type="subtask"
+                          current={row.subtask.status}
+                          projectId={row.subtask.projectId}
+                          taskId={row.subtask.taskId}
+                          subtaskId={row.subtask.id}
+                        />
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+                {canManageTask ? (
+                  <div className="mobile-card-actions">
+                    {isTask ? (
+                      <EditTaskModal projectId={row.task.projectId} users={users} task={row.task} triggerKind="antd" />
+                    ) : (
+                      <EditSubtaskModal
+                        projectId={row.subtask.projectId}
+                        taskId={row.subtask.taskId}
+                        users={users}
+                        subtask={row.subtask}
+                        triggerKind="antd"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="mobile-card-actions">
+                    {isTask ? (
+                      <ViewTaskModal projectId={row.task.projectId} users={users} task={row.task} />
+                    ) : (
+                      <ViewSubtaskModal
+                        projectId={row.subtask.projectId}
+                        taskId={row.subtask.taskId}
+                        users={users}
+                        subtask={row.subtask}
+                      />
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })
+        ) : (
+          <div className="notice">No tasks yet.</div>
+        )}
+      </div>
+    </>
   );
 }

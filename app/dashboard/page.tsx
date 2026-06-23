@@ -284,7 +284,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
          subtasks.id,
          tasks.project_id,
          subtasks.title,
-         NULL::text AS description,
+         subtasks.description,
          subtasks.priority,
          subtasks.status,
          projects.name AS project_name,

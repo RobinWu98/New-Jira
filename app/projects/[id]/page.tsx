@@ -51,12 +51,14 @@ type TaskRow = {
   assigned_to_name: string | null;
   assigned_to_email: string;
   created_at: Date | string;
+  updated_at: Date | string;
 };
 
 type SubtaskRow = {
   id: string;
   task_id: string;
   title: string;
+  description: string | null;
   start_date: Date | string | null;
   due_date: Date | string | null;
   priority: string;
@@ -65,6 +67,7 @@ type SubtaskRow = {
   assigned_to_name: string | null;
   assigned_to_email: string;
   created_at: Date | string;
+  updated_at: Date | string;
 };
 
 type CommentRow = {
@@ -140,6 +143,34 @@ function formatDateTime(value: Date | string) {
   }).format(date);
 }
 
+function formatUpdateDate(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric"
+  }).format(date);
+}
+
+function getTime(value: Date | string) {
+  return (value instanceof Date ? value : new Date(value)).getTime();
+}
+
+function getLatestDate(...values: Array<Date | string | null | undefined>) {
+  return values.reduce<Date | string | null>((latest, value) => {
+    if (!value) {
+      return latest;
+    }
+
+    if (!latest || getTime(value) > getTime(latest)) {
+      return value;
+    }
+
+    return latest;
+  }, null);
+}
+
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -183,13 +214,16 @@ function toTaskListItemData(
   projectName: string,
   task: TaskRow,
   comments: TaskCommentData[],
-  logs: TaskLogData[]
+  logs: TaskLogData[],
+  lastUpdateAt: Date | string
 ): TaskListItemData {
   return {
     ...toTaskFormData(projectId, task),
     assignedTo: task.assigned_to_name || task.assigned_to_email,
     startLabel: formatOptionalDate(task.start_date),
     dueLabel: task.due_date ? formatDate(task.due_date) : "No due date",
+    lastUpdate: formatUpdateDate(lastUpdateAt),
+    lastUpdateAt: getTime(lastUpdateAt),
     projectName,
     comments,
     logs
@@ -200,13 +234,15 @@ function toSubtaskListItemData(
   projectId: string,
   subtask: SubtaskRow,
   comments: TaskCommentData[],
-  logs: TaskLogData[]
+  logs: TaskLogData[],
+  lastUpdateAt: Date | string
 ): SubtaskListItemData {
   return {
     id: subtask.id,
     projectId,
     taskId: subtask.task_id,
     title: subtask.title,
+    description: subtask.description ?? "",
     assignedToId: subtask.assigned_to_id,
     startDate: subtask.start_date ? toDateInput(subtask.start_date) : "",
     dueDate: subtask.due_date ? toDateInput(subtask.due_date) : "",
@@ -215,6 +251,8 @@ function toSubtaskListItemData(
     assignedTo: subtask.assigned_to_name || subtask.assigned_to_email,
     startLabel: formatOptionalDate(subtask.start_date),
     dueLabel: subtask.due_date ? formatDate(subtask.due_date) : "No due date",
+    lastUpdate: formatUpdateDate(lastUpdateAt),
+    lastUpdateAt: getTime(lastUpdateAt),
     comments,
     logs
   };
@@ -279,22 +317,67 @@ function groupLogs(logs: LogRow[], useSubtaskId = false) {
   return groups;
 }
 
+function groupLatestActivityByWorkItem(
+  values: Array<{ created_at: Date | string; work_item_id: string }>
+) {
+  const groups = new Map<string, Date | string>();
+
+  for (const value of values) {
+    const latest = getLatestDate(groups.get(value.work_item_id), value.created_at);
+
+    if (latest) {
+      groups.set(value.work_item_id, latest);
+    }
+  }
+
+  return groups;
+}
+
+function groupLatestLogActivity(logs: LogRow[], useSubtaskId = false) {
+  const groups = new Map<string, Date | string>();
+
+  for (const log of logs) {
+    const workItemId = useSubtaskId ? log.subtask_id : log.task_id;
+
+    if (!workItemId) {
+      continue;
+    }
+
+    const latest = getLatestDate(groups.get(workItemId), log.created_at);
+
+    if (latest) {
+      groups.set(workItemId, latest);
+    }
+  }
+
+  return groups;
+}
+
 function groupSubtasksByTask(
   subtasks: SubtaskRow[],
   projectId: string,
   subtaskCommentsById: Map<string, TaskCommentData[]>,
-  subtaskLogsById: Map<string, TaskLogData[]>
+  subtaskLogsById: Map<string, TaskLogData[]>,
+  subtaskCommentActivityById: Map<string, Date | string>,
+  subtaskLogActivityById: Map<string, Date | string>
 ) {
   const groups = new Map<string, SubtaskListItemData[]>();
 
   for (const subtask of subtasks) {
     const existing = groups.get(subtask.task_id) ?? [];
+    const lastUpdateAt = getLatestDate(
+      subtask.updated_at,
+      subtaskCommentActivityById.get(subtask.id),
+      subtaskLogActivityById.get(subtask.id)
+    ) ?? subtask.updated_at;
+
     existing.push(
       toSubtaskListItemData(
         projectId,
         subtask,
         subtaskCommentsById.get(subtask.id) ?? [],
-        subtaskLogsById.get(subtask.id) ?? []
+        subtaskLogsById.get(subtask.id) ?? [],
+        lastUpdateAt
       )
     );
     groups.set(subtask.task_id, existing);
@@ -355,7 +438,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
          tasks.assigned_to_id,
          users.name AS assigned_to_name,
          users.email::text AS assigned_to_email,
-         tasks.created_at
+         tasks.created_at,
+         tasks.updated_at
        FROM tasks
        JOIN users ON users.id = tasks.assigned_to_id
        WHERE tasks.project_id = $1
@@ -372,6 +456,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
          subtasks.id,
          subtasks.task_id,
          subtasks.title,
+         subtasks.description,
          subtasks.start_date,
          subtasks.due_date,
          subtasks.priority,
@@ -379,7 +464,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
          subtasks.assigned_to_id,
          users.name AS assigned_to_name,
          users.email::text AS assigned_to_email,
-         subtasks.created_at
+         subtasks.created_at,
+         subtasks.updated_at
        FROM subtasks
        JOIN tasks ON tasks.id = subtasks.task_id
        JOIN users ON users.id = subtasks.assigned_to_id
@@ -469,7 +555,18 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const subtaskCommentsById = groupComments(subtaskCommentsResult.rows, user);
   const taskLogsById = groupLogs(logsResult.rows.filter((log) => !log.subtask_id));
   const subtaskLogsById = groupLogs(logsResult.rows.filter((log) => Boolean(log.subtask_id)), true);
-  const subtasksByTask = groupSubtasksByTask(subtasksResult.rows, project.id, subtaskCommentsById, subtaskLogsById);
+  const taskCommentActivityById = groupLatestActivityByWorkItem(taskCommentsResult.rows);
+  const subtaskCommentActivityById = groupLatestActivityByWorkItem(subtaskCommentsResult.rows);
+  const taskLogActivityById = groupLatestLogActivity(logsResult.rows.filter((log) => !log.subtask_id));
+  const subtaskLogActivityById = groupLatestLogActivity(logsResult.rows.filter((log) => Boolean(log.subtask_id)), true);
+  const subtasksByTask = groupSubtasksByTask(
+    subtasksResult.rows,
+    project.id,
+    subtaskCommentsById,
+    subtaskLogsById,
+    subtaskCommentActivityById,
+    subtaskLogActivityById
+  );
   const taskGroups = {
     active: tasksResult.rows.filter((task) => task.status !== "done"),
     overdue: tasksResult.rows.filter((task) => task.status === "overdue"),
@@ -516,13 +613,20 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <ProjectTasksAntTable
           canManageTask={userCanManageTask}
           canUpdateStatus
+          currentUserId={user.id}
           rows={filteredTasks.map((task) => {
+            const lastUpdateAt = getLatestDate(
+              task.updated_at,
+              taskCommentActivityById.get(task.id),
+              taskLogActivityById.get(task.id)
+            ) ?? task.updated_at;
             const taskData = toTaskListItemData(
                 project.id,
                 project.name,
                 task,
                 taskCommentsById.get(task.id) ?? [],
-                taskLogsById.get(task.id) ?? []
+                taskLogsById.get(task.id) ?? [],
+                lastUpdateAt
               );
 
             return {

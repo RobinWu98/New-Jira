@@ -27,12 +27,7 @@ type ProjectRow = {
   remaining_task_count: string;
   task_count: string;
   created_at: Date | string;
-  last_comment_author_email: string | null;
-  last_comment_author_name: string | null;
-  last_comment_body: string | null;
-  last_comment_created_at: Date | string | null;
-  last_comment_item_title: string | null;
-  last_comment_item_type: string | null;
+  last_update_at: Date | string | null;
 };
 
 type ProjectDisplayStatus = "active" | "overdue" | "done";
@@ -73,14 +68,13 @@ function formatDate(value: Date | string) {
   return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
 }
 
-function formatDateTime(value: Date | string) {
+function formatUpdateDate(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value);
 
   return new Intl.DateTimeFormat("en-AU", {
     day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit"
+    month: "numeric",
+    year: "numeric"
   }).format(date);
 }
 
@@ -105,27 +99,10 @@ function formatProjectStatus(status: string) {
   return status === "done" ? "Completed" : status === "overdue" ? "Overdue" : "Ongoing";
 }
 
-function formatLastComment(project: ProjectRow) {
-  if (!project.last_comment_body || !project.last_comment_created_at) {
-    return {
-      label: "No comments",
-      title: "No comments"
-    };
-  }
-
-  const author = project.last_comment_author_name || project.last_comment_author_email || "Deleted user";
-  const when = formatDateTime(project.last_comment_created_at);
-  const label = `${author} - ${when}`;
-
-  return {
-    label,
-    title: label
-  };
-}
-
 function toTableRow(project: ProjectRow): ProjectsAntTableRow {
   const openDays = getOpenDays(project.created_at);
-  const lastComment = formatLastComment(project);
+  const lastUpdateAt = project.last_update_at ?? project.created_at;
+  const lastUpdate = formatUpdateDate(lastUpdateAt);
 
   return {
     id: project.id,
@@ -143,11 +120,9 @@ function toTableRow(project: ProjectRow): ProjectsAntTableRow {
     completedTaskCount: Number(project.completed_task_count),
     remainingTaskCount: Number(project.remaining_task_count),
     taskCount: Number(project.task_count),
-    lastComment: lastComment.label,
-    lastCommentCreatedAt: project.last_comment_created_at
-      ? new Date(project.last_comment_created_at).getTime()
-      : Number.NEGATIVE_INFINITY,
-    lastCommentTitle: lastComment.title
+    lastUpdate,
+    lastUpdateAt: new Date(lastUpdateAt).getTime(),
+    lastUpdateTitle: `Last update: ${lastUpdate}`
   };
 }
 
@@ -179,60 +154,49 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
          COUNT(tasks.id) FILTER (WHERE tasks.status <> 'done')::text AS remaining_task_count,
          COUNT(tasks.id)::text AS task_count,
          projects.created_at,
-         latest_comment.author_email AS last_comment_author_email,
-         latest_comment.author_name AS last_comment_author_name,
-         latest_comment.body AS last_comment_body,
-         latest_comment.created_at AS last_comment_created_at,
-         latest_comment.item_title AS last_comment_item_title,
-         latest_comment.item_type AS last_comment_item_type
+         latest_activity.last_update_at
        FROM projects
        LEFT JOIN users ON users.id = projects.owner_id
        LEFT JOIN tasks ON tasks.project_id = projects.id AND tasks.archived_at IS NULL
        LEFT JOIN LATERAL (
-         SELECT *
+         SELECT MAX(activity_at) AS last_update_at
          FROM (
-           SELECT
-             comment_users.email::text AS author_email,
-             comment_users.name AS author_name,
-             task_comments.body,
-             task_comments.created_at,
-             tasks.title AS item_title,
-             'task'::text AS item_type
-           FROM task_comments
-           JOIN tasks ON tasks.id = task_comments.task_id
-           LEFT JOIN users AS comment_users ON comment_users.id = task_comments.author_id
-           WHERE tasks.project_id = projects.id
-             AND tasks.archived_at IS NULL
+           SELECT projects.updated_at AS activity_at
+           UNION ALL
+           SELECT project_tasks.updated_at
+           FROM tasks AS project_tasks
+           WHERE project_tasks.project_id = projects.id
+           UNION ALL
+           SELECT project_subtasks.updated_at
+           FROM subtasks AS project_subtasks
+           JOIN tasks AS project_tasks ON project_tasks.id = project_subtasks.task_id
+           WHERE project_tasks.project_id = projects.id
            UNION ALL
            SELECT
-             comment_users.email::text AS author_email,
-             comment_users.name AS author_name,
-             subtask_comments.body,
-             subtask_comments.created_at,
-             subtasks.title AS item_title,
-             'subtask'::text AS item_type
+             task_comments.updated_at
+           FROM task_comments
+           JOIN tasks ON tasks.id = task_comments.task_id
+           WHERE tasks.project_id = projects.id
+           UNION ALL
+           SELECT
+             subtask_comments.updated_at
            FROM subtask_comments
            JOIN subtasks ON subtasks.id = subtask_comments.subtask_id
            JOIN tasks ON tasks.id = subtasks.task_id
-           LEFT JOIN users AS comment_users ON comment_users.id = subtask_comments.author_id
            WHERE tasks.project_id = projects.id
-             AND tasks.archived_at IS NULL
-             AND subtasks.archived_at IS NULL
-         ) AS project_comments
-         ORDER BY project_comments.created_at DESC
-         LIMIT 1
-       ) AS latest_comment ON true
+           UNION ALL
+           SELECT work_item_logs.created_at
+           FROM work_item_logs
+           JOIN tasks ON tasks.id = work_item_logs.task_id
+           WHERE tasks.project_id = projects.id
+         ) AS project_activity
+       ) AS latest_activity ON true
        WHERE projects.archived_at IS NULL
        GROUP BY
          projects.id,
          users.name,
          users.email,
-         latest_comment.author_email,
-         latest_comment.author_name,
-         latest_comment.body,
-         latest_comment.created_at,
-         latest_comment.item_title,
-         latest_comment.item_type
+         latest_activity.last_update_at
        ORDER BY
          CASE
            WHEN projects.status <> 'done' AND projects.ddl < current_date THEN 0
