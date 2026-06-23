@@ -192,21 +192,15 @@ export function WorkItemsAntTable({
     key: "projectName",
     width: 300,
     render: (projectName: string | undefined, row: WorkItemAntTableRow) => {
-      const projectLink = row.detail.projectId ? (
+      return row.detail.projectId ? (
         <a href={`/projects/${row.detail.projectId}`}>{projectName || "No project"}</a>
       ) : (
         projectName || "No project"
       );
-
-      return groupByProject
-        ? {
-            children: projectLink,
-            props: {
-              rowSpan: projectRowSpans.get(row.id) ?? 1
-            }
-          }
-        : projectLink;
     },
+    onCell: (row: WorkItemAntTableRow) => ({
+      rowSpan: groupByProject ? projectRowSpans.get(row.id) ?? 1 : 1
+    }),
     ...(enableProjectSort && !groupByProject
       ? {
           sorter: (left: WorkItemAntTableRow, right: WorkItemAntTableRow) =>
