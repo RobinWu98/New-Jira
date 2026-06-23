@@ -30,21 +30,6 @@ export default async function LoginPage({
             <div className="notice success">Password updated. Log in with your new password.</div>
           ) : null}
           <LoginForm />
-          <div className="login-role-list" aria-label="Test accounts">
-            <div>
-              <strong>Admin</strong>
-              <span>admin@example.com</span>
-            </div>
-            <div>
-              <strong>Manager</strong>
-              <span>ava.chen@example.com</span>
-            </div>
-            <div>
-              <strong>Staff</strong>
-              <span>mia.rodriguez@example.com</span>
-            </div>
-            <p>Password for all: <strong>Password123!</strong></p>
-          </div>
         </section>
       </div>
     </main>

@@ -7,7 +7,6 @@ This guide explains how to run Svida Job Tracker locally, initialize PostgreSQL,
 - Node.js 24 or newer
 - npm
 - PostgreSQL running locally
-- Optional: Docker Desktop with WSL2 enabled
 
 ## Local Environment
 
@@ -173,29 +172,6 @@ Useful checks:
 SELECT COUNT(*) FROM users;
 SELECT COUNT(*) FROM projects;
 SELECT COUNT(*) FROM tasks;
-```
-
-## Docker Demo
-
-If Docker Desktop and WSL2 are installed:
-
-```powershell
-docker compose up --build
-```
-
-Open:
-
-```text
-http://localhost:3000
-```
-
-Docker starts PostgreSQL and runs `npm run db:init` before starting the app.
-
-Reset Docker demo data:
-
-```powershell
-docker compose down -v
-docker compose up --build
 ```
 
 ## Git Workflow

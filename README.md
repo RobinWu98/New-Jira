@@ -2,7 +2,7 @@
 
 Old fashioned Next.js full-stack starter with a basic account system.
 
-For full developer setup, database seeding, Docker demo notes, and data insertion examples, see:
+For full developer setup, database seeding, and data insertion examples, see:
 
 ```text
 docs/DEVELOPER_SETUP.md
@@ -58,40 +58,6 @@ npm run dev
 ```
 
 The app runs at `http://localhost:3000`.
-
-## Docker pitch setup
-
-Use this when you want a quick product demo with PostgreSQL and seeded data.
-
-```bash
-docker compose up --build
-```
-
-The app runs at:
-
-```bash
-http://localhost:3000
-```
-
-The Docker database is exposed on host port `5433` and stores data in the `svida_jobtracker_data` Docker volume.
-
-Seeded demo login:
-
-```bash
-admin@example.com
-Password123!
-```
-
-The app container runs `npm run db:init` before starting, so the Docker database is automatically created and seeded with demo users, projects, and tasks.
-
-To reset the Docker demo database:
-
-```bash
-docker compose down -v
-docker compose up --build
-```
-
-For real Office 365 SMTP in Docker, set `SMTP_USER` and `SMTP_PASS` in `docker-compose.yml` before starting the app.
 
 ## Current scope
 
